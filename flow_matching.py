@@ -3,434 +3,359 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 
-class FlowMatching(nn.Module):
+class RectifiedFlow(nn.Module):
     """
-    Flow Matching for FULL WAVEFORM generation
-    Based on "Flow Matching for Generative Modeling" paper
+    🔥 Rectified Flow for Efficient Waveform Generation
+    - 직선적 경로로 더 효율적인 학습
+    - 적은 단계로도 고품질 생성
+    - FP16 최적화 적용
     """
-    def __init__(self, dim=16384, condition_dim=768, steps=100, sigma_min=1e-4):
+    def __init__(self, dim=16384, condition_dim=768, steps=20, hidden_dim=512):
         super().__init__()
-        self.dim = dim  # Full waveform length!
+        self.dim = dim
         self.condition_dim = condition_dim
         self.steps = steps
-        self.sigma_min = sigma_min
         
-        # Vector field network for waveform generation
-        self.vector_field = VectorFieldNet(
-            dim=dim, 
+        # 🔥 경량화된 벡터 필드 네트워크
+        self.vector_field = RectifiedVectorField(
+            dim=dim,
             condition_dim=condition_dim,
-            hidden_dim=512
+            hidden_dim=hidden_dim
         )
         
-    def compute_loss(self, x1, condition, num_samples=None):
+        # 🚀 최적화 설정
+        self._compiled = False
+        
+    def compile_model(self):
+        """벡터 필드 컴파일"""
+        if not self._compiled:
+            try:
+                self.vector_field = torch.compile(self.vector_field, mode='max-autotune')
+                self._compiled = True
+                print("🚀 RectifiedFlow compiled")
+            except Exception as e:
+                print(f"⚠️ RectifiedFlow compilation failed: {e}")
+    
+    def compute_loss(self, x1, condition):
         """
-        Compute flow matching loss for waveform generation
+        🔥 Rectified Flow 손실 계산
+        더 직선적인 경로로 학습 효율성 향상
+        
         Args:
-            x1: (B, waveform_length) target waveforms  
-            condition: (B, condition_dim) conditioning features
+            x1: (B, dim) 타겟 파형
+            condition: (B, condition_dim) 조건
         """
-        B, waveform_length = x1.shape
+        B = x1.size(0)
+        device = x1.device
         
-        if num_samples is None:
-            num_samples = B
+        # 시간 샘플링 (균등 분포)
+        t = torch.rand(B, device=device, dtype=x1.dtype)
         
-        # Sample time uniformly
-        t = torch.rand(num_samples, device=x1.device, dtype=x1.dtype)
+        # 노이즈 샘플링 (가우시안)
+        x0 = torch.randn_like(x1)
         
-        # Sample noise
-        x0 = torch.randn_like(x1[:num_samples])
-        x1_sample = x1[:num_samples]
-        condition_sample = condition[:num_samples]
+        # 🔥 Rectified Flow: 직선적 보간
+        t_expanded = t.view(B, 1)
+        x_t = (1 - t_expanded) * x0 + t_expanded * x1
         
-        # Interpolate
-        t_expanded = t.unsqueeze(-1)  # (num_samples, 1)
-        x_t = (1 - t_expanded) * x0 + t_expanded * x1_sample
+        # 🔥 타겟 속도 (직선 경로)
+        target_velocity = x1 - x0
         
-        # Target velocity (conditional flow)
-        u_t = x1_sample - x0
+        # 🔥 속도 예측
+        predicted_velocity = self.vector_field(x_t, t, condition)
         
-        # Predict velocity
-        v_t = self.vector_field(x_t, t, condition_sample)
-        
-        # MSE loss
-        loss = F.mse_loss(v_t, u_t)
+        # MSE 손실
+        loss = F.mse_loss(predicted_velocity, target_velocity)
         
         return loss
     
-    def sample(self, condition, num_steps=None, x0=None, method='fast_inverse'):
+    @torch.amp.autocast('cuda')
+    def sample(self, condition, num_steps=None, x0=None, method='fast_rectified'):
         """
-        🚀 Optimized sampling with multiple fast methods
-        Args:
-            condition: (B, condition_dim) conditioning features
-            num_steps: number of integration steps
-            x0: initial noise (if None, sample from Gaussian)
-            method: 'fast_inverse', 'ode_adaptive', 'ode', 'euler'
+        🚀 최적화된 샘플링 - 여러 빠른 방법 지원
         """
         if num_steps is None:
-            # Default faster steps
-            if method == 'fast_inverse':
-                num_steps = 8  # 🔥 Very fast
-            elif method == 'ode_adaptive':
-                num_steps = 15  # Adaptive, so fewer nominal steps
-            else:
-                num_steps = self.steps
+            num_steps = max(4, self.steps // 5)  # 기본적으로 매우 빠르게
         
         B = condition.size(0)
         device = condition.device
         
         if x0 is None:
-            x0 = torch.randn(B, self.dim, device=device)
+            x0 = torch.randn(B, self.dim, device=device, dtype=condition.dtype)
         
-        if method == 'ode_adaptive':
-            return self._sample_ode_adaptive(condition, x0, num_steps)
-        elif method == 'ode':
-            return self._sample_ode(condition, x0, num_steps)
-        elif method == 'fast_inverse':
-            return self._sample_fast_inverse(condition, x0, num_steps)
+        # 방법에 따른 분기
+        if method == 'fast_rectified':
+            return self._sample_fast_rectified(condition, x0, num_steps)
+        elif method == 'heun':
+            return self._sample_heun(condition, x0, num_steps)
+        elif method == 'rk4':
+            return self._sample_rk4(condition, x0, num_steps)
         else:  # euler
             return self._sample_euler(condition, x0, num_steps)
     
-    def _sample_euler(self, condition, x0, num_steps):
-        """Standard Euler integration"""
-        dt = 1.0 / num_steps
-        t = 0.0
-        x = x0
-        
-        for step in range(num_steps):
-            t_tensor = torch.full((x.size(0),), t, device=x.device)
-            
-            # Predict velocity
-            v = self.vector_field(x, t_tensor, condition)
-            
-            # Update
-            x = x + dt * v
-            t += dt
-        
-        return x
-    
-    def _sample_ode(self, condition, x0, num_steps):
-        """ODE solver using adaptive step size"""
-        try:
-            from scipy.integrate import solve_ivp
-            import numpy as np
-        except ImportError:
-            # Fallback to Euler if scipy not available
-            return self._sample_euler(condition, x0, num_steps)
-        
-        device = x0.device
-        B = x0.size(0)
-        
-        def ode_func(t, x_flat):
-            x_tensor = torch.from_numpy(x_flat.reshape(B, -1)).float().to(device)
-            t_tensor = torch.full((B,), t, device=device)
-            
-            with torch.no_grad():
-                v = self.vector_field(x_tensor, t_tensor, condition)
-            
-            return v.cpu().numpy().flatten()
-        
-        # Solve ODE
-        sol = solve_ivp(
-            ode_func, 
-            [0, 1], 
-            x0.cpu().numpy().flatten(),
-            method='RK45',
-            rtol=1e-3,  # Faster tolerance
-            atol=1e-6
-        )
-        
-        result = torch.from_numpy(sol.y[:, -1]).float().to(device)
-        return result.view(B, self.dim)
-    
-    def _sample_fast_inverse(self, condition, x0, num_steps):
+    def _sample_fast_rectified(self, condition, x0, num_steps):
         """
-        🚀 Ultra-fast inverse flow sampling
-        Uses adaptive step size + higher-order methods
+        🚀 Ultra-fast Rectified Flow 샘플링
+        - 적응적 단계 크기
+        - 고차 정확도
         """
-        # Use even fewer steps with smart step sizing
-        effective_steps = max(num_steps // 2, 3)  # Minimum 3 steps
-        
-        # Adaptive step schedule (larger steps early, smaller steps late)
-        step_schedule = self._get_adaptive_schedule(effective_steps)
+        # 적응적 단계 스케줄
+        step_schedule = self._get_optimal_schedule(num_steps)
         
         x = x0
         t = 0.0
         
         for i, dt in enumerate(step_schedule):
-            t_tensor = torch.full((x.size(0),), t, device=x.device)
+            t_tensor = torch.full((x.size(0),), t, device=x.device, dtype=x.dtype)
             
             if i == 0:
-                # First step: simple Euler
+                # 첫 단계: Euler
                 v = self.vector_field(x, t_tensor, condition)
                 x = x + dt * v
+            elif i >= len(step_schedule) - 2:
+                # 마지막 2단계: RK4로 정확도 향상
+                x = self._rk4_step(x, t, dt, condition)
             else:
-                # Higher-order steps: 4th order Runge-Kutta for critical final steps
-                if i >= effective_steps - 2:  # Last 2 steps use RK4
-                    x = self._rk4_step(x, t, dt, condition)
-                else:
-                    # Middle steps: Heun's method (RK2)
-                    v1 = self.vector_field(x, t_tensor, condition)
-                    x_pred = x + dt * v1
-                    
-                    t_next = torch.full((x.size(0),), t + dt, device=x.device)
-                    v2 = self.vector_field(x_pred, t_next, condition)
-                    
-                    x = x + dt * 0.5 * (v1 + v2)
+                # 중간 단계: Heun's method
+                v1 = self.vector_field(x, t_tensor, condition)
+                x_pred = x + dt * v1
+                
+                t_next = torch.full((x.size(0),), t + dt, device=x.device, dtype=x.dtype)
+                v2 = self.vector_field(x_pred, t_next, condition)
+                
+                x = x + dt * 0.5 * (v1 + v2)
             
             t += dt
         
         return x
     
-    def _get_adaptive_schedule(self, num_steps):
-        """Generate adaptive step schedule"""
-        # Exponential decay: larger steps early, smaller steps late
+    def _get_optimal_schedule(self, num_steps):
+        """최적화된 단계 스케줄"""
+        # Rectified Flow에 최적화된 스케줄
+        # 초기에는 큰 단계, 후반에는 작은 단계
+        
+        if num_steps <= 1:
+            return [1.0]
+        
+        # 지수적 감소 + 선형 조합
+        alpha = 0.2  # 감소율
         steps = []
-        total_time = 1.0
         
-        # Generate exponentially decreasing steps
-        alpha = 0.3  # Controls decay rate
-        weights = [math.exp(-alpha * i) for i in range(num_steps)]
-        total_weight = sum(weights)
+        for i in range(num_steps):
+            # 비선형 스케줄링
+            progress = i / (num_steps - 1)
+            
+            # 초기에는 큰 단계, 후반에는 세밀한 단계
+            weight = math.exp(-alpha * progress)
+            
+            steps.append(weight)
         
-        # Normalize to sum to 1.0
-        steps = [w * total_time / total_weight for w in weights]
+        # 정규화하여 총합이 1이 되도록
+        total = sum(steps)
+        steps = [s / total for s in steps]
         
         return steps
     
-    def _rk4_step(self, x, t, dt, condition):
-        """4th order Runge-Kutta step for high accuracy"""
-        t_tensor = torch.full((x.size(0),), t, device=x.device)
+    def _sample_euler(self, condition, x0, num_steps):
+        """표준 Euler 적분"""
+        dt = 1.0 / num_steps
+        x = x0
         
+        for i in range(num_steps):
+            t = torch.full((x.size(0),), i * dt, device=x.device, dtype=x.dtype)
+            v = self.vector_field(x, t, condition)
+            x = x + dt * v
+        
+        return x
+    
+    def _sample_heun(self, condition, x0, num_steps):
+        """Heun's method (RK2)"""
+        dt = 1.0 / num_steps
+        x = x0
+        
+        for i in range(num_steps):
+            t = torch.full((x.size(0),), i * dt, device=x.device, dtype=x.dtype)
+            
+            # Heun's method
+            v1 = self.vector_field(x, t, condition)
+            x_pred = x + dt * v1
+            
+            t_next = torch.full((x.size(0),), (i + 1) * dt, device=x.device, dtype=x.dtype)
+            v2 = self.vector_field(x_pred, t_next, condition)
+            
+            x = x + dt * 0.5 * (v1 + v2)
+        
+        return x
+    
+    def _sample_rk4(self, condition, x0, num_steps):
+        """4차 Runge-Kutta"""
+        dt = 1.0 / num_steps
+        x = x0
+        
+        for i in range(num_steps):
+            t = i * dt
+            x = self._rk4_step(x, t, dt, condition)
+        
+        return x
+    
+    def _rk4_step(self, x, t, dt, condition):
+        """RK4 단일 단계"""
+        t_tensor = torch.full((x.size(0),), t, device=x.device, dtype=x.dtype)
         k1 = self.vector_field(x, t_tensor, condition)
         
-        t_mid1 = torch.full((x.size(0),), t + dt/2, device=x.device)
+        t_mid1 = torch.full((x.size(0),), t + dt/2, device=x.device, dtype=x.dtype)
         k2 = self.vector_field(x + dt/2 * k1, t_mid1, condition)
         
         k3 = self.vector_field(x + dt/2 * k2, t_mid1, condition)
         
-        t_end = torch.full((x.size(0),), t + dt, device=x.device)
+        t_end = torch.full((x.size(0),), t + dt, device=x.device, dtype=x.dtype)
         k4 = self.vector_field(x + dt * k3, t_end, condition)
         
         return x + dt/6 * (k1 + 2*k2 + 2*k3 + k4)
-    
-    def _sample_ode_adaptive(self, condition, x0, num_steps):
-        """
-        🎯 Adaptive ODE solver with error control
-        """
-        try:
-            from scipy.integrate import solve_ivp
-            import numpy as np
-        except ImportError:
-            print("⚠️ SciPy not available, falling back to fast_inverse")
-            return self._sample_fast_inverse(condition, x0, num_steps)
-        
-        device = x0.device
-        B = x0.size(0)
-        
-        def ode_func(t, x_flat):
-            x_tensor = torch.from_numpy(x_flat.reshape(B, -1)).float().to(device)
-            t_tensor = torch.full((B,), t, device=device)
-            
-            with torch.no_grad():
-                v = self.vector_field(x_tensor, t_tensor, condition)
-            
-            return v.cpu().numpy().flatten()
-        
-        # Adaptive tolerances based on num_steps
-        rtol = max(1e-3, 1e-2 / num_steps)  # Looser tolerance for speed
-        atol = max(1e-6, 1e-5 / num_steps)
-        
-        # Solve ODE with adaptive stepping
-        sol = solve_ivp(
-            ode_func, 
-            [0, 1], 
-            x0.cpu().numpy().flatten(),
-            method='DOP853',  # High-order adaptive method
-            rtol=rtol,
-            atol=atol,
-            max_step=0.1  # Prevent too large steps
-        )
-        
-        result = torch.from_numpy(sol.y[:, -1]).float().to(device)
-        return result.view(B, self.dim)
-    
-    def sample_ode(self, condition, num_steps=50, method='euler'):
-        """
-        More sophisticated ODE integration
-        """
-        from scipy.integrate import solve_ivp
-        import numpy as np
-        
-        B, T, _ = condition.shape
-        device = condition.device
-        
-        x0 = torch.randn(B, T, self.dim, device=device)
-        
-        def ode_func(t, x):
-            x_tensor = torch.from_numpy(x).float().to(device).view(B, T, self.dim)
-            t_tensor = torch.full((B * T,), t, device=device)
-            condition_flat = condition.view(-1, condition.size(-1))
-            
-            v = self.vector_field(x_tensor.view(-1, self.dim), t_tensor, condition_flat)
-            return v.cpu().numpy().flatten()
-        
-        # Solve ODE
-        sol = solve_ivp(
-            ode_func, 
-            [0, 1], 
-            x0.cpu().numpy().flatten(),
-            method='RK45',
-            rtol=1e-5,
-            atol=1e-8
-        )
-        
-        result = torch.from_numpy(sol.y[:, -1]).float().to(device)
-        return result.view(B, T, self.dim)
 
-class VectorFieldNet(nn.Module):
-    """Neural network for predicting vector field for waveform generation"""
+class RectifiedVectorField(nn.Module):
+    """
+    🔥 최적화된 벡터 필드 네트워크
+    - FP16 최적화
+    - 메모리 효율적 설계
+    - 컴파일 최적화 적용
+    """
     def __init__(self, dim=16384, condition_dim=768, hidden_dim=512):
         super().__init__()
         
         self.dim = dim
         self.condition_dim = condition_dim
         
-        # Time embedding
-        self.time_embedding = SinusoidalEmbedding(hidden_dim)
+        # 🔥 시간 임베딩 (최적화)
+        self.time_embedding = OptimizedTimeEmbedding(hidden_dim)
         
-        # Waveform projection (compress high-dim waveform)
+        # 🔥 효율적인 파형 프로젝션
         self.waveform_proj = nn.Sequential(
             nn.Linear(dim, hidden_dim),
             nn.SiLU(),
-            nn.Linear(hidden_dim, hidden_dim)
+            nn.Dropout(0.05),  # 낮은 드롭아웃
+            nn.Linear(hidden_dim, hidden_dim // 4)
         )
         
-        # Condition projection
-        self.condition_proj = nn.Linear(condition_dim, hidden_dim)
+        # 조건 프로젝션
+        self.condition_proj = nn.Linear(condition_dim, hidden_dim // 4)
         
-        # Main network - deeper for waveform complexity
+        # 🔥 최적화된 메인 네트워크
         self.net = nn.Sequential(
-            nn.Linear(hidden_dim * 3, hidden_dim),
-            nn.SiLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.SiLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.SiLU(),
+            nn.Dropout(0.05),
             nn.Linear(hidden_dim, hidden_dim),
             nn.SiLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.SiLU(),
-            nn.Linear(hidden_dim, dim)  # Output full waveform velocity
+            nn.Linear(hidden_dim, dim)  # 출력: 파형 속도
         )
         
+        # 🔥 가중치 초기화 최적화
+        self._initialize_weights()
+        
+    def _initialize_weights(self):
+        """효율적인 가중치 초기화"""
+        for module in self.modules():
+            if isinstance(module, nn.Linear):
+                # He 초기화 (SiLU에 최적화)
+                nn.init.kaiming_normal_(module.weight, mode='fan_in', nonlinearity='relu')
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+    
+    @torch.amp.autocast('cuda')
     def forward(self, x, t, condition):
         """
+        최적화된 순전파
         Args:
-            x: (B, dim) input waveform
-            t: (B,) time
-            condition: (B, condition_dim) conditioning
+            x: (B, dim) 입력 파형
+            t: (B,) 시간
+            condition: (B, condition_dim) 조건
         """
-        # Embeddings
-        x_emb = self.waveform_proj(x)  # (B, hidden_dim)
-        t_emb = self.time_embedding(t)  # (B, hidden_dim)  
-        c_emb = self.condition_proj(condition)  # (B, hidden_dim)
+        # 임베딩들
+        x_emb = self.waveform_proj(x)  # (B, hidden_dim//4)
+        t_emb = self.time_embedding(t)  # (B, hidden_dim//2)
+        c_emb = self.condition_proj(condition)  # (B, hidden_dim//4)
         
-        # Concatenate
-        h = torch.cat([x_emb, t_emb, c_emb], dim=-1)  # (B, hidden_dim * 3)
+        # 연결 - 차원 맞춤
+        h = torch.cat([x_emb, t_emb, c_emb], dim=-1)  # (B, hidden_dim)
         
-        # Predict velocity
-        v = self.net(h)  # (B, dim) - full waveform velocity!
+        # 속도 예측
+        velocity = self.net(h)
         
-        return v
+        return velocity
 
-class RetrievalModule(nn.Module):
-    """Optional retrieval module for enhanced content features"""
-    def __init__(self, feature_dim=768, k=5):
-        super().__init__()
-        self.feature_dim = feature_dim
-        self.k = k
-        
-        # Feature enhancement network
-        self.enhance_net = nn.Sequential(
-            nn.Linear(feature_dim * 2, feature_dim),
-            nn.SiLU(),
-            nn.Linear(feature_dim, feature_dim)
-        )
-        
-        # This would store training features in practice
-        self.register_buffer('training_features', torch.empty(0, feature_dim))
-        self.register_buffer('speaker_ids', torch.empty(0, dtype=torch.long))
-        
-    def add_training_features(self, features, speaker_ids):
-        """Add features from training data"""
-        self.training_features = torch.cat([self.training_features, features.detach()], dim=0)
-        self.speaker_ids = torch.cat([self.speaker_ids, speaker_ids], dim=0)
-    
-    def enhance(self, content_features, target_speaker_id):
-        """
-        Enhance content features using retrieval
-        Args:
-            content_features: (B, feature_dim)
-            target_speaker_id: (B,) target speaker IDs
-        """
-        if self.training_features.size(0) == 0:
-            return content_features
-        
-        B = content_features.size(0)
-        enhanced_features = []
-        
-        for i in range(B):
-            query = content_features[i:i+1]  # (1, feature_dim)
-            spk_id = target_speaker_id[i].item()
-            
-            # Find features from same speaker
-            same_speaker_mask = (self.speaker_ids == spk_id)
-            if same_speaker_mask.sum() > 0:
-                candidate_features = self.training_features[same_speaker_mask]
-                
-                # Compute similarity (cosine similarity)
-                similarities = F.cosine_similarity(
-                    query.unsqueeze(1),  # (1, 1, feature_dim)
-                    candidate_features.unsqueeze(0),  # (1, N, feature_dim)
-                    dim=-1
-                ).squeeze(0)  # (N,)
-                
-                # Get top-k most similar
-                k = min(self.k, similarities.size(0))
-                _, top_indices = similarities.topk(k)
-                retrieved_features = candidate_features[top_indices].mean(dim=0, keepdim=True)  # (1, feature_dim)
-                
-                # Enhance with retrieved features
-                combined = torch.cat([query, retrieved_features], dim=-1)  # (1, feature_dim * 2)
-                enhanced = self.enhance_net(combined)  # (1, feature_dim)
-                enhanced_features.append(enhanced)
-            else:
-                # No features from target speaker, use original
-                enhanced_features.append(query)
-        
-        return torch.cat(enhanced_features, dim=0)  # (B, feature_dim)
-
-class SinusoidalEmbedding(nn.Module):
-    """Sinusoidal time embedding"""
+class OptimizedTimeEmbedding(nn.Module):
+    """최적화된 시간 임베딩"""
     def __init__(self, dim):
         super().__init__()
         self.dim = dim
         
+        # 사전 계산된 상수
+        half_dim = dim // 4  # hidden_dim의 1/2를 차지하도록 수정
+        emb = math.log(10000) / (half_dim - 1) if half_dim > 1 else 0
+        self.register_buffer('emb_scale', torch.exp(torch.arange(half_dim) * -emb))
+        self.proj = nn.Linear(half_dim * 2, dim // 2)  # 최종 출력 차원 맞춤
+        
+    @torch.amp.autocast('cuda')
     def forward(self, t):
         """
+        빠른 시간 임베딩
         Args:
-            t: (N,) time values in [0, 1]
+            t: (N,) 시간 값 [0, 1]
         """
-        device = t.device
-        half_dim = self.dim // 2
-        
-        emb = math.log(10000) / (half_dim - 1)
-        emb = torch.exp(torch.arange(half_dim, device=device) * -emb)
-        emb = t.unsqueeze(-1) * emb.unsqueeze(0)
-        
+        if len(self.emb_scale) == 0:
+            # half_dim이 0인 경우 처리
+            return torch.zeros(t.size(0), self.dim // 2, device=t.device, dtype=t.dtype)
+            
+        emb = t.unsqueeze(-1) * self.emb_scale.unsqueeze(0)
         emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=-1)
         
-        if self.dim % 2 == 1:
-            emb = F.pad(emb, (0, 1))
+        # 프로젝션을 통해 차원 맞춤
+        emb = self.proj(emb)
             
         return emb
+
+# 🔥 추가 최적화 유틸리티들
+class FlowScheduler:
+    """동적 스케줄링으로 추론 속도 최적화"""
+    
+    @staticmethod
+    def get_adaptive_steps(quality_target='fast'):
+        """품질 목표에 따른 적응적 단계 수"""
+        schedules = {
+            'ultra_fast': 3,
+            'fast': 6,
+            'balanced': 12,
+            'high_quality': 20,
+            'best': 30
+        }
+        return schedules.get(quality_target, 6)
+    
+    @staticmethod
+    def get_progressive_schedule(max_steps, current_epoch, total_epochs):
+        """훈련 중 점진적 단계 증가"""
+        # 초기에는 적은 단계, 후반에는 많은 단계
+        progress = current_epoch / total_epochs
+        min_steps = max(2, max_steps // 10)
+        steps = int(min_steps + (max_steps - min_steps) * progress)
+        return min(steps, max_steps)
+
+# 🚀 성능 최적화를 위한 컴파일 래퍼
+def compile_rectified_flow(model):
+    """RectifiedFlow 모델 컴파일"""
+    try:
+        if hasattr(torch, 'compile'):
+            model.vector_field = torch.compile(
+                model.vector_field, 
+                mode='max-autotune',
+                dynamic=True
+            )
+            print("🚀 RectifiedFlow vector field compiled")
+        else:
+            print("⚠️ torch.compile not available")
+    except Exception as e:
+        print(f"⚠️ Compilation failed: {e}")
+    
+    return model
