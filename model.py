@@ -25,15 +25,22 @@ class F0Embedding(nn.Module):
         # 결합 네트워크
         self.combine_proj = nn.Linear(d_model, d_model)
         
-    def forward(self, f0, vuv):
+    def forward(self, f0, vuv, semitone_shift=0.0):
         """
         Args:
             f0: (B, T) 정규화된 F0 값
             vuv: (B, T) voiced/unvoiced 플래그
+            semitone_shift: float 또는 (B,) 세미톤 시프트 (-12 ~ +12)
         Returns:
             (B, T, d_model) F0 임베딩
         """
-        f0_emb = self.f0_proj(f0.unsqueeze(-1))  # (B, T, d_model//2)
+        # 🎵 세미톤 시프트 적용
+        if semitone_shift != 0.0:
+            f0_shifted = self.apply_semitone_shift(f0, vuv, semitone_shift)
+        else:
+            f0_shifted = f0
+        
+        f0_emb = self.f0_proj(f0_shifted.unsqueeze(-1))  # (B, T, d_model//2)
         vuv_emb = self.vuv_proj(vuv.unsqueeze(-1))  # (B, T, d_model//2)
         
         # F0는 voiced 영역에서만 활성화
@@ -42,6 +49,37 @@ class F0Embedding(nn.Module):
         # 결합
         combined = torch.cat([f0_emb, vuv_emb], dim=-1)  # (B, T, d_model)
         return self.combine_proj(combined)
+    
+    def apply_semitone_shift(self, f0, vuv, semitone_shift):
+        """
+        🎵 세미톤 시프트 적용
+        Args:
+            f0: (B, T) F0 값 (Hz 단위 또는 log scale)
+            vuv: (B, T) voiced/unvoiced 마스크
+            semitone_shift: float 또는 (B,) 세미톤 수 (-12 ~ +12)
+        Returns:
+            (B, T) 시프트된 F0 값
+        """
+        if isinstance(semitone_shift, (int, float)):
+            if semitone_shift == 0.0:
+                return f0
+            semitone_shift = torch.tensor(semitone_shift, device=f0.device, dtype=f0.dtype)
+        
+        # 배치별 서로 다른 시프트 지원
+        if semitone_shift.dim() == 0:
+            semitone_shift = semitone_shift.unsqueeze(0).expand(f0.size(0))
+        
+        # Log scale에서 세미톤 시프트 (더 정확함)
+        # 1 semitone = log2(2^(1/12)) = 1/12 in log2 scale
+        shift_factor = semitone_shift.unsqueeze(1) * (1.0 / 12.0)  # (B, 1)
+        
+        # F0가 이미 log scale이라고 가정하고 시프트
+        f0_shifted = f0 + shift_factor
+        
+        # Voiced 영역에서만 시프트 적용
+        f0_shifted = f0_shifted * vuv + f0 * (1 - vuv)
+        
+        return f0_shifted
 
 class LoRALayer(nn.Module):
     """경량화된 LoRA 레이어"""
@@ -85,7 +123,7 @@ class SpeakerAdapter(nn.Module):
 
 class VoiceConversionModel(nn.Module):
     def __init__(self, 
-                 hubert_model_name="ZhenYe234/hubert_base_general_audio",
+                 hubert_model_name="utter-project/mHuBERT-147",  # 🌍 다국어 HuBERT-147
                  d_model=768,
                  ssm_layers=3,
                  flow_steps=20,  # 🔥 Rectified Flow는 더 적은 단계로도 고품질
@@ -99,10 +137,15 @@ class VoiceConversionModel(nn.Module):
         
         self.use_f0_conditioning = use_f0_conditioning
         
-        # 🔒 HuBERT (FROZEN)
+        # 🔒 mHuBERT-147 (FROZEN) - 다국어 지원
         self.hubert = HubertModel.from_pretrained(hubert_model_name)
         for param in self.hubert.parameters():
             param.requires_grad = False
+        
+        print(f"🌍 Loaded mHuBERT-147: Multilingual speech representation model")
+        print(f"   Model: {hubert_model_name}")
+        print(f"   Hidden size: {self.hubert.config.hidden_size}")
+        print(f"   Languages: 147+ languages supported")
             
         # 🔒 SSM Encoder (FROZEN during fine-tuning)
         self.ssm_encoder = S6SSMEncoder(d_model=d_model, n_layers=ssm_layers)
@@ -214,6 +257,7 @@ class VoiceConversionModel(nn.Module):
                 target_waveform=None, 
                 f0_target=None, 
                 vuv_target=None, 
+                semitone_shift=0.0,  # 🎵 세미톤 시프트 추가
                 training=True,
                 inference_method='fast_rectified',
                 num_steps=8):
@@ -256,8 +300,8 @@ class VoiceConversionModel(nn.Module):
             f0_resized = self._interpolate_f0_to_content(f0_target, encoded_content.size(1))
             vuv_resized = self._interpolate_f0_to_content(vuv_target, encoded_content.size(1))
             
-            # F0 임베딩
-            f0_emb = self.f0_embedding(f0_resized, vuv_resized)
+            # F0 임베딩 (세미톤 시프트 포함)
+            f0_emb = self.f0_embedding(f0_resized, vuv_resized, semitone_shift)
             
             # 조건에 F0 정보 추가
             condition = torch.cat([condition, f0_emb], dim=-1)

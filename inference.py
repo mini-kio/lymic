@@ -122,6 +122,7 @@ class OptimizedInferenceEngine:
                            target_speaker_id: int,
                            f0_chunk: Optional[torch.Tensor] = None,
                            vuv_chunk: Optional[torch.Tensor] = None,
+                           semitone_shift: float = 0.0,  # 🎵 세미톤 시프트 추가
                            method: str = 'fast_rectified',
                            num_steps: int = 6) -> torch.Tensor:
         """
@@ -148,6 +149,7 @@ class OptimizedInferenceEngine:
                 target_speaker_id=target_speaker_tensor,
                 f0_target=f0_target,
                 vuv_target=vuv_target,
+                semitone_shift=semitone_shift,  # 🎵 세미톤 시프트 전달
                 training=False,
                 inference_method=method,
                 num_steps=num_steps
@@ -324,7 +326,8 @@ class OptimizedInferenceEngine:
                          overlap: int = 2048,
                          method: str = 'fast_rectified',
                          num_steps: int = 6,
-                         use_f0: bool = True) -> dict:
+                         use_f0: bool = True,
+                         semitone_shift: float = 0.0) -> dict:  # 🎵 세미톤 시프트 추가
         """
         🚀 전체 오디오 변환 (최적화됨)
         """
@@ -359,6 +362,7 @@ class OptimizedInferenceEngine:
                     target_speaker_id,
                     chunk_data['f0'],
                     chunk_data['vuv'],
+                    semitone_shift,  # 🎵 세미톤 시프트 전달
                     method,
                     num_steps
                 )
@@ -368,6 +372,7 @@ class OptimizedInferenceEngine:
                     target_speaker_id,
                     None,
                     None,
+                    semitone_shift,  # 🎵 세미톤 시프트 전달
                     method,
                     num_steps
                 )
@@ -423,6 +428,7 @@ class OptimizedInferenceEngine:
         print(f"   RTF: {rtf:.2f}x")
         print(f"   Method: {method} ({num_steps} steps)")
         print(f"   F0 conditioning: {'✅' if use_f0 else '❌'}")
+        print(f"   Semitone shift: {semitone_shift:+.1f}")  # 🎵 세미톤 정보 출력
         print(f"   Peak memory: {stats['peak_memory_mb']:.1f}MB")
         
         return stats
@@ -527,6 +533,10 @@ def main():
     parser.add_argument('--chunk-length', type=int, default=16384, help='Chunk length')
     parser.add_argument('--overlap', type=int, default=2048, help='Chunk overlap')
     
+    # 🎵 음성 제어 설정
+    parser.add_argument('--semitone-shift', type=float, default=0.0, 
+                       help='Semitone shift (-12 to +12, singing voice conversion)')
+    
     # 벤치마크
     parser.add_argument('--benchmark', action='store_true', help='Run performance benchmark')
     
@@ -554,6 +564,7 @@ def main():
     print(f"   Speaker: {args.speaker}")
     print(f"   Method: {args.method} ({args.steps} steps)")
     print(f"   F0 conditioning: {'✅' if not args.no_f0 else '❌'}")
+    print(f"   Semitone shift: {args.semitone_shift:+.1f}")  # 🎵 세미톤 정보 출력
     
     # 추론 엔진 초기화
     engine = OptimizedInferenceEngine(
@@ -584,7 +595,8 @@ def main():
             overlap=args.overlap,
             method=args.method,
             num_steps=args.steps,
-            use_f0=not args.no_f0
+            use_f0=not args.no_f0,
+            semitone_shift=args.semitone_shift  # 🎵 세미톤 시프트 전달
         )
 
 if __name__ == '__main__':
@@ -603,6 +615,19 @@ python inference.py -m model.pt -i input.wav -o output.wav -s 1 \\
 # 3. 초고속 변환 (F0 없이)
 python inference.py -m model.pt -i input.wav -o output.wav -s 1 \\
                    --method fast_rectified --steps 4 --no-f0
+
+# 🎵 노래 변환 예시들
+# 남성 -> 여성 (1옥타브 위)
+python inference.py -m model.pt -i song.wav -o song_female.wav -s 1 \\
+                   --semitone-shift +12
+
+# 여성 -> 남성 (1옥타브 아래)  
+python inference.py -m model.pt -i song.wav -o song_male.wav -s 2 \\
+                   --semitone-shift -12
+
+# 미세 조정 (+2 세미톤, 온음 위)
+python inference.py -m model.pt -i song.wav -o song_higher.wav -s 1 \\
+                   --semitone-shift +2.0
 
 # 4. 성능 벤치마크
 python inference.py -m model.pt -i input.wav -o output.wav -s 1 --benchmark
