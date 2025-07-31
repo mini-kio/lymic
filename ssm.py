@@ -7,7 +7,7 @@ from torch.utils.checkpoint import checkpoint
 
 class OptimizedS6Block(nn.Module):
     """
-    🚀 최적화된 S6 (Selective State Space) Block
+     최적화된 S6 (Selective State Space) Block
     - FP16 최적화
     - 메모리 효율적 구현
     - 컴파일 최적화 지원
@@ -20,31 +20,31 @@ class OptimizedS6Block(nn.Module):
         self.d_inner = expand_factor * d_model
         self.use_fast_conv = use_fast_conv
         
-        # 🔥 효율적인 입력 프로젝션
+        #  효율적인 입력 프로젝션
         self.in_proj = nn.Linear(d_model, self.d_inner * 2, bias=False)
         
-        # 🔥 선택적 파라미터 (최적화됨)
+        #  선택적 파라미터 (최적화됨)
         self.x_proj = nn.Linear(self.d_inner, d_state * 2 + self.d_inner, bias=False)
         self.dt_proj = nn.Linear(d_state, self.d_inner, bias=True)
         
-        # 🔥 상태 공간 파라미터 (초기화 최적화)
+        #  상태 공간 파라미터 (초기화 최적화)
         self.A_log = nn.Parameter(torch.randn(self.d_inner, d_state))
         self.D = nn.Parameter(torch.randn(self.d_inner))
         
-        # 🔥 출력 프로젝션 (bias 제거로 최적화)
+        #  출력 프로젝션 (bias 제거로 최적화)
         self.out_proj = nn.Linear(self.d_inner, d_model, bias=False)
         
         # 정규화
         self.norm = nn.LayerNorm(d_model)
         
-        # 🚀 최적화된 초기화
+        #  최적화된 초기화
         self._optimized_init()
         
         # 컴파일 준비
         self._compiled = False
     
     def _optimized_init(self):
-        """🔥 최적화된 파라미터 초기화"""
+        """ 최적화된 파라미터 초기화"""
         # A 행렬: 안정적인 초기화
         with torch.no_grad():
             # S4/S6에 최적화된 초기화
@@ -72,14 +72,14 @@ class OptimizedS6Block(nn.Module):
                     dynamic=True
                 )
                 self._compiled = True
-                print("🚀 S6Block compiled")
+                print(" S6Block compiled")
             except Exception as e:
-                print(f"⚠️ S6Block compilation failed: {e}")
+                print(f" S6Block compilation failed: {e}")
     
     @torch.amp.autocast('cuda')
     def forward(self, x):
         """
-        🔥 최적화된 순전파
+         최적화된 순전파
         Args:
             x: (B, L, D) 입력 시퀀스
         Returns:
@@ -88,14 +88,14 @@ class OptimizedS6Block(nn.Module):
         B, L, D = x.shape
         residual = x
         
-        # 🔥 입력 프로젝션 (한 번에)
+        #  입력 프로젝션 (한 번에)
         x_and_res = self.in_proj(x)  # (B, L, 2*d_inner)
         x, res = x_and_res.split([self.d_inner, self.d_inner], dim=-1)
         
         # SiLU 활성화
         x = F.silu(x)
         
-        # 🚀 선택적 스캔 (최적화됨)
+        #  선택적 스캔 (최적화됨)
         x = self.selective_scan(x)
         
         # 잔차 연결
@@ -109,35 +109,35 @@ class OptimizedS6Block(nn.Module):
     
     def selective_scan(self, x):
         """
-        🚀 최적화된 선택적 스캔
+         최적화된 선택적 스캔
         - 메모리 효율적
         - 수치적 안정성 향상
         - FP16 최적화
         """
         B, L, d_inner = x.shape
         
-        # 🔥 선택적 파라미터 계산
+        #  선택적 파라미터 계산
         x_dbl = self.x_proj(x)  # (B, L, d_state*2 + d_inner)
         
         # 차원 분할 수정
         delta_B_sel, C_sel = x_dbl.split([self.d_state * 2, self.d_inner], dim=-1)
         B_sel, delta = delta_B_sel.split([self.d_state, self.d_state], dim=-1)
         
-        # 🔥 이산화 단계 (수치적 안정성)
+        #  이산화 단계 (수치적 안정성)
         delta = F.softplus(self.dt_proj(delta))  # (B, L, d_inner)
         delta = torch.clamp(delta, max=10.0)  # 수치적 안정성
         
         # 상태 공간 행렬
         A = -torch.exp(self.A_log.float())  # (d_inner, d_state)
         
-        # 🚀 효율적인 이산화
+        #  효율적인 이산화
         # deltaA: (B, L, d_inner, d_state)
         deltaA = torch.exp(delta.unsqueeze(-1) * A.unsqueeze(0).unsqueeze(0))
         
         # deltaB: (B, L, d_inner, d_state) 
         deltaB = delta.unsqueeze(-1) * B_sel.unsqueeze(-2)
         
-        # 🚀 최적화된 스캔 (청크 단위 처리)
+        #  최적화된 스캔 (청크 단위 처리)
         chunk_size = min(64, L)  # 메모리 효율성
         outputs = []
         
@@ -175,14 +175,14 @@ class OptimizedS6Block(nn.Module):
         
         y = torch.stack(outputs, dim=1)  # (B, L, d_inner)
         
-        # 🔥 스킵 연결 (브로드캐스팅 최적화)
+        #  스킵 연결 (브로드캐스팅 최적화)
         y = y + x * self.D.view(1, 1, -1)
         
         return y
 
 class FastS6Block(nn.Module):
     """
-    🚀 Ultra-fast S6 Block
+     Ultra-fast S6 Block
     - 근사 스캔으로 극대 최적화
     - 추론 전용 최적화
     """
@@ -224,7 +224,7 @@ class FastS6Block(nn.Module):
 
 class OptimizedS6SSMEncoder(nn.Module):
     """
-    🚀 최적화된 S6-기반 SSM 인코더
+     최적화된 S6-기반 SSM 인코더
     - 동적 레이어 선택
     - 그래디언트 체크포인팅
     - 컴파일 최적화
@@ -235,7 +235,7 @@ class OptimizedS6SSMEncoder(nn.Module):
         
         self.use_gradient_checkpointing = use_gradient_checkpointing
         
-        # 🔥 동적 레이어 구성
+        #  동적 레이어 구성
         self.layers = nn.ModuleList()
         
         for i in range(n_layers):
@@ -253,10 +253,10 @@ class OptimizedS6SSMEncoder(nn.Module):
         # 컴파일 준비
         self._compiled = False
         
-        print(f"🚀 OptimizedS6SSM initialized:")
+        print(f" OptimizedS6SSM initialized:")
         print(f"   Layers: {n_layers}")
-        print(f"   Fast layers: {'✅' if use_fast_layers else '❌'}")
-        print(f"   Gradient checkpointing: {'✅' if use_gradient_checkpointing else '❌'}")
+        print(f"   Fast layers: {'' if use_fast_layers else ''}")
+        print(f"   Gradient checkpointing: {'' if use_gradient_checkpointing else ''}")
     
     def compile_encoder(self):
         """인코더 컴파일"""
@@ -268,14 +268,14 @@ class OptimizedS6SSMEncoder(nn.Module):
                         layer.compile_block()
                 
                 self._compiled = True
-                print("🚀 S6SSMEncoder compiled")
+                print(" S6SSMEncoder compiled")
             except Exception as e:
-                print(f"⚠️ S6SSMEncoder compilation failed: {e}")
+                print(f" S6SSMEncoder compilation failed: {e}")
     
     @torch.amp.autocast('cuda')
     def forward(self, x):
         """
-        🔥 최적화된 순전파
+         최적화된 순전파
         Args:
             x: (B, T, D) HuBERT에서 온 특성
         Returns:
@@ -294,7 +294,7 @@ class OptimizedS6SSMEncoder(nn.Module):
 
 class ParallelS6Block(nn.Module):
     """
-    🚀 병렬 처리 최적화된 S6 Block
+     병렬 처리 최적화된 S6 Block
     - 여러 헤드 병렬 처리
     - 더 효율적인 메모리 사용
     """
@@ -350,7 +350,7 @@ class ParallelS6Block(nn.Module):
         
         return self.norm(x + residual)
 
-# 🚀 S6 최적화 유틸리티
+#  S6 최적화 유틸리티
 
 def benchmark_s6_performance(d_model=768, seq_len=1000, batch_size=8, num_runs=10):
     """S6 블록 성능 벤치마크"""
@@ -368,7 +368,7 @@ def benchmark_s6_performance(d_model=768, seq_len=1000, batch_size=8, num_runs=1
     # 테스트 데이터
     x = torch.randn(batch_size, seq_len, d_model, device=device)
     
-    print(f"🚀 S6 Performance Benchmark:")
+    print(f" S6 Performance Benchmark:")
     print(f"   Input shape: {x.shape}")
     print(f"   Device: {device}")
     print(f"   Runs: {num_runs}")
@@ -444,7 +444,7 @@ def create_adaptive_ssm_encoder(d_model=768, target_speed='balanced'):
         **config
     )
     
-    print(f"🎯 Created {target_speed} SSM encoder")
+    print(f" Created {target_speed} SSM encoder")
     return encoder
 
 # 호환성을 위한 별칭

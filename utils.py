@@ -19,7 +19,7 @@ warnings.filterwarnings("ignore", category=UserWarning)
 @lru_cache(maxsize=1000)
 def extract_f0_cached(audio_hash, sample_rate=44100, hop_length=512, f0_min=80, f0_max=800, method='pyin'):
     """
-    🚀 캐시된 F0 추출 - 동일한 오디오에 대해 재계산 방지
+    캐시된 F0 추출 - 동일한 오디오에 대해 재계산 방지
     """
     # 실제로는 audio를 받아야 하지만, 캐싱을 위해 해시 사용
     # 이 함수는 실제 구현에서는 사용하지 않고, 아래의 extract_f0를 사용
@@ -27,7 +27,7 @@ def extract_f0_cached(audio_hash, sample_rate=44100, hop_length=512, f0_min=80, 
 
 def extract_f0(audio, sample_rate=44100, hop_length=512, f0_min=80, f0_max=800, method='pyin'):
     """
-    🔥 최적화된 F0 추출
+     최적화된 F0 추출
     - 더 빠른 파라미터
     - 에러 핸들링 강화
     - 메모리 효율성 향상
@@ -41,7 +41,7 @@ def extract_f0(audio, sample_rate=44100, hop_length=512, f0_min=80, f0_max=800, 
     
     try:
         if method == 'pyin':
-            # 🔥 최적화된 pyin 파라미터
+            #  최적화된 pyin 파라미터
             f0, voiced_flag, voiced_probs = librosa.pyin(
                 audio,
                 fmin=f0_min,
@@ -83,7 +83,7 @@ def extract_f0(audio, sample_rate=44100, hop_length=512, f0_min=80, f0_max=800, 
         return f0.astype(np.float32), vuv.astype(np.float32)
         
     except Exception as e:
-        print(f"⚠️ F0 extraction failed: {e}")
+        print(f" F0 extraction failed: {e}")
         # 실패 시 기본 길이로 0 반환
         expected_frames = 1 + len(audio) // hop_length
         return np.zeros(expected_frames, dtype=np.float32), np.zeros(expected_frames, dtype=np.float32)
@@ -97,7 +97,7 @@ def compute_vuv(f0, threshold=50.0):  # 더 높은 임계값
 
 def normalize_f0(f0, method='log', f0_min=50, f0_max=1000):  # 더 넓은 범위
     """
-    🔥 최적화된 F0 정규화
+     최적화된 F0 정규화
     - 더 안정적인 정규화
     - 극값 처리 개선
     """
@@ -172,7 +172,7 @@ def denormalize_f0(f0_norm, method='log', f0_min=50, f0_max=1000):
 
 class OptimizedVoiceConversionDataset(Dataset):
     """
-    🚀 최적화된 Voice Conversion Dataset
+     최적화된 Voice Conversion Dataset
     - 멀티프로세싱 F0 추출
     - 캐싱 시스템
     - 메모리 효율적 로딩
@@ -194,7 +194,7 @@ class OptimizedVoiceConversionDataset(Dataset):
         self.f0_method = f0_method
         self.use_cache = use_cache
         
-        # 🔥 캐시 디렉토리
+        #  캐시 디렉토리
         self.cache_dir = self.data_dir / '.cache'
         if self.use_cache:
             self.cache_dir.mkdir(exist_ok=True)
@@ -202,9 +202,9 @@ class OptimizedVoiceConversionDataset(Dataset):
         # 멀티프로세싱 설정
         self.max_workers = max_workers or min(8, mp.cpu_count())
         
-        print(f"🚀 Initializing optimized dataset:")
-        print(f"   Cache: {'✅ Enabled' if self.use_cache else '❌ Disabled'}")
-        print(f"   F0 extraction: {'✅ Enabled' if self.extract_f0 else '❌ Disabled'}")
+        print(f" Initializing optimized dataset:")
+        print(f"   Cache: {' Enabled' if self.use_cache else ' Disabled'}")
+        print(f"   F0 extraction: {' Enabled' if self.extract_f0 else ' Disabled'}")
         print(f"   Max workers: {self.max_workers}")
         
         # 데이터 스캔
@@ -215,7 +215,7 @@ class OptimizedVoiceConversionDataset(Dataset):
             self._prepare_f0_cache()
     
     def _scan_dataset(self):
-        """🔥 최적화된 데이터셋 스캔"""
+        """ 최적화된 데이터셋 스캔"""
         start_time = time.time()
         
         self.speakers = []
@@ -232,9 +232,9 @@ class OptimizedVoiceConversionDataset(Dataset):
             if speaker_name and len(audio_files) >= self.min_files_per_speaker:
                 self.speakers.append(speaker_name)
                 self.speaker_files[speaker_name] = sorted(audio_files)
-                print(f"📁 {speaker_name}: {len(audio_files)} files")
+                print(f" {speaker_name}: {len(audio_files)} files")
             elif speaker_name:
-                print(f"⚠️ {speaker_name}: {len(audio_files)} files (< {self.min_files_per_speaker}, skipped)")
+                print(f" {speaker_name}: {len(audio_files)} files (< {self.min_files_per_speaker}, skipped)")
         
         # 화자 ID 매핑
         self.speaker_to_id = {spk: i for i, spk in enumerate(sorted(self.speakers))}
@@ -244,7 +244,7 @@ class OptimizedVoiceConversionDataset(Dataset):
         self._generate_training_pairs()
         
         scan_time = time.time() - start_time
-        print(f"⚡ Dataset scan completed in {scan_time:.2f}s")
+        print(f" Dataset scan completed in {scan_time:.2f}s")
     
     def _scan_speaker_dir(self, speaker_dir):
         """개별 화자 디렉토리 스캔"""
@@ -275,7 +275,7 @@ class OptimizedVoiceConversionDataset(Dataset):
                             'target_speaker_id': target_speaker_id
                         })
         
-        print(f"🎯 Generated {len(self.training_pairs)} training pairs")
+        print(f" Generated {len(self.training_pairs)} training pairs")
     
     def _prepare_f0_cache(self):
         """F0 캐시 준비"""
@@ -292,10 +292,10 @@ class OptimizedVoiceConversionDataset(Dataset):
             if (cache_info.get('sample_rate') == self.sample_rate and
                 cache_info.get('hop_length') == self.hop_length and
                 cache_info.get('f0_method') == self.f0_method):
-                print("✅ F0 cache is valid")
+                print(" F0 cache is valid")
                 return
         
-        print("🔄 Building F0 cache...")
+        print(" Building F0 cache...")
         self._build_f0_cache()
     
     def _build_f0_cache(self):
@@ -304,7 +304,7 @@ class OptimizedVoiceConversionDataset(Dataset):
         for files in self.speaker_files.values():
             all_files.extend(files)
         
-        print(f"🔄 Processing {len(all_files)} files for F0 cache...")
+        print(f" Processing {len(all_files)} files for F0 cache...")
         
         # 배치 처리로 F0 추출
         batch_size = 50
@@ -327,7 +327,7 @@ class OptimizedVoiceConversionDataset(Dataset):
         with open(self.cache_dir / 'f0_cache_info.json', 'w') as f:
             json.dump(cache_info, f)
         
-        print("✅ F0 cache built successfully")
+        print(" F0 cache built successfully")
     
     def _extract_and_cache_f0(self, audio_file):
         """개별 파일의 F0 추출 및 캐시"""
@@ -369,7 +369,7 @@ class OptimizedVoiceConversionDataset(Dataset):
             )
             
         except Exception as e:
-            print(f"⚠️ Failed to cache F0 for {audio_file}: {e}")
+            print(f" Failed to cache F0 for {audio_file}: {e}")
     
     def _load_cached_f0(self, audio_file):
         """캐시된 F0 로드"""
@@ -387,7 +387,7 @@ class OptimizedVoiceConversionDataset(Dataset):
                     'vuv': data['vuv']
                 }
             except Exception as e:
-                print(f"⚠️ Failed to load cached F0 for {audio_file}: {e}")
+                print(f" Failed to load cached F0 for {audio_file}: {e}")
         
         return None
     
@@ -397,7 +397,7 @@ class OptimizedVoiceConversionDataset(Dataset):
     def __getitem__(self, idx):
         pair = self.training_pairs[idx]
         
-        # 🚀 오디오 로딩
+        #  오디오 로딩
         source_waveform = self._load_audio(pair['source_file'])
         
         # 타겟 오디오 (랜덤 선택)
@@ -415,7 +415,7 @@ class OptimizedVoiceConversionDataset(Dataset):
             'target_file': str(target_file)
         }
         
-        # 🎵 F0 처리
+        #  F0 처리
         if self.extract_f0:
             # 캐시에서 시도
             f0_data = self._load_cached_f0(target_file)
@@ -440,7 +440,7 @@ class OptimizedVoiceConversionDataset(Dataset):
                     )
                     f0_normalized = normalize_f0(f0, method='log')
                 except Exception as e:
-                    print(f"⚠️ F0 extraction failed: {e}")
+                    print(f" F0 extraction failed: {e}")
                     # 기본값 사용
                     default_frames = self.waveform_length // self.hop_length + 1
                     f0_normalized = np.zeros(default_frames, dtype=np.float32)
@@ -452,9 +452,9 @@ class OptimizedVoiceConversionDataset(Dataset):
         return result
     
     def _load_audio(self, file_path):
-        """🚀 최적화된 오디오 로딩"""
+        """ 최적화된 오디오 로딩"""
         try:
-            # 🔥 torchaudio로 빠른 로딩
+            #  torchaudio로 빠른 로딩
             waveform, sr = torchaudio.load(str(file_path))
             
             # 리샘플링 (필요시)
@@ -481,7 +481,7 @@ class OptimizedVoiceConversionDataset(Dataset):
             return waveform
             
         except Exception as e:
-            print(f"⚠️ Failed to load audio {file_path}: {e}")
+            print(f" Failed to load audio {file_path}: {e}")
             # 기본 노이즈 반환
             if self.channels == 2:
                 return torch.randn(2, self.waveform_length) * 0.01
@@ -522,21 +522,21 @@ class OptimizedVoiceConversionDataset(Dataset):
     
     def print_sample_pairs(self, num_samples=5):
         """샘플 페어 출력"""
-        print(f"\n🔍 Sample training pairs:")
+        print(f"\n Sample training pairs:")
         for i in range(min(num_samples, len(self.training_pairs))):
             pair = self.training_pairs[i]
             print(f"   {i+1}. {pair['source_speaker']} → {pair['target_speaker']}")
-            print(f"      📁 {Path(pair['source_file']).name}")
+            print(f"       {Path(pair['source_file']).name}")
         
         if self.extract_f0:
-            print(f"   🎵 F0 conditioning enabled with cache")
+            print(f"    F0 conditioning enabled with cache")
         print()
 
 # 호환성을 위한 별칭
 VoiceConversionDataset = OptimizedVoiceConversionDataset
 
 def optimized_collate_fn(batch):
-    """🚀 최적화된 collate 함수"""
+    """ 최적화된 collate 함수"""
     # 첫 번째 아이템에서 차원 확인
     first_source = batch[0]['source_waveform']
     is_stereo = first_source.dim() == 2
@@ -560,7 +560,7 @@ def optimized_collate_fn(batch):
         'target_speakers': [item['target_speaker'] for item in batch]
     }
     
-    # 🎵 F0/VUV 처리 (최적화됨)
+    #  F0/VUV 처리 (최적화됨)
     if 'f0_target' in batch[0]:
         # 배치 내 최대 길이 찾기
         max_f0_len = max(item['f0_target'].size(0) for item in batch)
@@ -586,7 +586,7 @@ def optimized_collate_fn(batch):
 # 호환성을 위한 별칭
 collate_fn = optimized_collate_fn
 
-# 🚀 추가 최적화 유틸리티들
+#  추가 최적화 유틸리티들
 
 def create_optimized_train_val_split(dataset_root, train_ratio=0.8, use_symlinks=True):
     """
@@ -661,18 +661,18 @@ def create_optimized_train_val_split(dataset_root, train_ratio=0.8, use_symlinks
     
     for speaker_name, train_count, val_count in results:
         if speaker_name and (train_count > 0 or val_count > 0):
-            print(f"📁 {speaker_name}: {train_count} train, {val_count} val")
+            print(f" {speaker_name}: {train_count} train, {val_count} val")
             total_train += train_count
             total_val += val_count
     
-    print(f"✅ Optimized Train/Val split completed!")
-    print(f"   📁 Total train files: {total_train}")
-    print(f"   📁 Total val files: {total_val}")
-    print(f"   🔗 Using {'symlinks' if use_symlinks else 'copies'}")
+    print(f" Optimized Train/Val split completed!")
+    print(f"    Total train files: {total_train}")
+    print(f"    Total val files: {total_val}")
+    print(f"    Using {'symlinks' if use_symlinks else 'copies'}")
 
 def benchmark_dataset_loading(dataset, num_samples=100):
     """데이터셋 로딩 성능 벤치마크"""
-    print(f"🚀 Benchmarking dataset loading ({num_samples} samples)...")
+    print(f" Benchmarking dataset loading ({num_samples} samples)...")
     
     start_time = time.time()
     
@@ -683,7 +683,7 @@ def benchmark_dataset_loading(dataset, num_samples=100):
     total_time = end_time - start_time
     avg_time = total_time / num_samples
     
-    print(f"📊 Loading benchmark results:")
+    print(f" Loading benchmark results:")
     print(f"   Total time: {total_time:.2f}s")
     print(f"   Average per sample: {avg_time*1000:.2f}ms")
     print(f"   Samples per second: {num_samples/total_time:.1f}")

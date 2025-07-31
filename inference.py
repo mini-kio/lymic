@@ -572,7 +572,7 @@ python inference.py -m model.pt -i input.wav -o output.wav -s 1 \\
 python inference.py -m model.pt -i input.wav -o output.wav -s 1 \\
                    --method fast_rectified --steps 4 --no-f0
 
-# 🎵 노래 변환 예시들
+# 노래 변환 예시들
 # 남성 -> 여성 (1옥타브 위)
 python inference.py -m model.pt -i song.wav -o song_female.wav -s 1 \\
                    --semitone-shift +12

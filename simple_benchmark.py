@@ -7,13 +7,13 @@ from ssm import OptimizedS6Block, FastS6Block
 
 def simple_benchmark():
     """간단한 성능 테스트"""
-    print("🚀 Simple Performance Check")
+    print(" Simple Performance Check")
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Device: {device}")
     
     # Flow Matching 테스트
-    print("\n🔥 Flow Matching Test:")
+    print("\n Flow Matching Test:")
     flow = RectifiedFlow(dim=1024, condition_dim=768, hidden_dim=256).to(device)
     condition = torch.randn(2, 768, device=device)
     x1 = torch.randn(2, 1024, device=device)
@@ -29,7 +29,7 @@ def simple_benchmark():
     print(f"  Sampling: {(time.time() - start)*1000:.2f}ms")
     
     # SSM 테스트
-    print("\n🚀 SSM Test:")
+    print("\n SSM Test:")
     s6_block = OptimizedS6Block(d_model=256, d_state=32).to(device)
     fast_block = FastS6Block(d_model=256, d_state=16).to(device)
     
@@ -46,9 +46,9 @@ def simple_benchmark():
     # 메모리 사용량
     if torch.cuda.is_available():
         memory_mb = torch.cuda.memory_allocated() / 1024 / 1024
-        print(f"\n💾 Memory usage: {memory_mb:.2f}MB")
+        print(f"\n Memory usage: {memory_mb:.2f}MB")
     
-    print("\n✅ Simple benchmark completed!")
+    print("\n Simple benchmark completed!")
 
 if __name__ == "__main__":
     simple_benchmark()

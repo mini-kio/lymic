@@ -1,5 +1,5 @@
 """
-🚀 고급 성능 벤치마크 도구
+ 고급 성능 벤치마크 도구
 flow_matching.py와 ssm.py 모듈들의 성능을 종합적으로 테스트
 """
 import torch
@@ -15,7 +15,7 @@ from flow_matching import RectifiedFlow, FlowScheduler
 from ssm import OptimizedS6Block, FastS6Block, ParallelS6Block, create_adaptive_ssm_encoder
 
 class PerformanceBenchmark:
-    """🚀 종합 성능 벤치마크"""
+    """ 종합 성능 벤치마크"""
     
     def __init__(self):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -26,7 +26,7 @@ class PerformanceBenchmark:
                                batch_sizes=[2, 4, 8],
                                num_runs=10):
         """Flow Matching 성능 벤치마크"""
-        print("🧪 Flow Matching Benchmark Started...")
+        print(" Flow Matching Benchmark Started...")
         
         flow_results = {}
         
@@ -91,7 +91,7 @@ class PerformanceBenchmark:
                 torch.cuda.empty_cache() if torch.cuda.is_available() else None
         
         self.results['flow_matching'] = flow_results
-        print("✅ Flow Matching Benchmark Completed")
+        print(" Flow Matching Benchmark Completed")
         
     def benchmark_ssm_variants(self,
                               d_models=[256, 512, 768],
@@ -99,7 +99,7 @@ class PerformanceBenchmark:
                               batch_size=4,
                               num_runs=10):
         """SSM 변형들 성능 벤치마크"""
-        print("🧪 SSM Variants Benchmark Started...")
+        print(" SSM Variants Benchmark Started...")
         
         ssm_results = {}
         
@@ -176,18 +176,18 @@ class PerformanceBenchmark:
                         torch.cuda.empty_cache() if torch.cuda.is_available() else None
                         
                     except Exception as e:
-                        print(f"  ⚠️ {key} failed: {e}")
+                        print(f"   {key} failed: {e}")
                         continue
         
         self.results['ssm_variants'] = ssm_results
-        print("✅ SSM Variants Benchmark Completed")
+        print(" SSM Variants Benchmark Completed")
     
     def benchmark_memory_scaling(self):
         """메모리 스케일링 테스트"""
-        print("🧪 Memory Scaling Benchmark Started...")
+        print(" Memory Scaling Benchmark Started...")
         
         if not torch.cuda.is_available():
-            print("⚠️ CUDA not available, skipping memory benchmark")
+            print(" CUDA not available, skipping memory benchmark")
             return
         
         memory_results = {}
@@ -262,16 +262,16 @@ class PerformanceBenchmark:
                     break
         
         self.results['memory_scaling'] = memory_results
-        print("✅ Memory Scaling Benchmark Completed")
+        print(" Memory Scaling Benchmark Completed")
     
     def generate_report(self):
         """성능 보고서 생성"""
-        print("\n📊 Performance Benchmark Report")
+        print("\n Performance Benchmark Report")
         print("=" * 50)
         
         # Flow Matching 결과
         if 'flow_matching' in self.results:
-            print("\n🔥 Flow Matching Performance:")
+            print("\n Flow Matching Performance:")
             flow_results = self.results['flow_matching']
             
             for key, result in flow_results.items():
@@ -282,7 +282,7 @@ class PerformanceBenchmark:
         
         # SSM 결과
         if 'ssm_variants' in self.results:
-            print("\n🚀 SSM Variants Performance:")
+            print("\n SSM Variants Performance:")
             ssm_results = self.results['ssm_variants']
             
             # 블록별 요약
@@ -299,7 +299,7 @@ class PerformanceBenchmark:
         
         # 메모리 스케일링 결과
         if 'memory_scaling' in self.results:
-            print("\n💾 Memory Scaling:")
+            print("\n Memory Scaling:")
             memory_results = self.results['memory_scaling']
             
             print("  Flow Matching:")
@@ -321,7 +321,7 @@ class PerformanceBenchmark:
     def save_results(self, filename="benchmark_results.txt"):
         """결과를 파일로 저장"""
         with open(filename, 'w', encoding='utf-8') as f:
-            f.write("🚀 Lymic Performance Benchmark Results\n")
+            f.write(" Lymic Performance Benchmark Results\n")
             f.write(f"Device: {self.device}\n")
             f.write(f"Timestamp: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write("=" * 50 + "\n\n")
@@ -333,13 +333,13 @@ class PerformanceBenchmark:
                 for key, result in results.items():
                     f.write(f"  {key}: {json.dumps(result, indent=4)}\n")
         
-        print(f"📄 Results saved to {filename}")
+        print(f" Results saved to {filename}")
 
 def quick_benchmark():
     """빠른 벤치마크 실행"""
     benchmark = PerformanceBenchmark()
     
-    print("🚀 Quick Benchmark Starting...")
+    print(" Quick Benchmark Starting...")
     
     # 작은 크기로 빠른 테스트
     benchmark.benchmark_flow_matching(
@@ -376,7 +376,7 @@ if __name__ == "__main__":
     elif args.full:
         benchmark = PerformanceBenchmark()
         
-        print("🚀 Full Benchmark Starting (this may take a while)...")
+        print(" Full Benchmark Starting (this may take a while)...")
         
         benchmark.benchmark_flow_matching()
         benchmark.benchmark_ssm_variants()

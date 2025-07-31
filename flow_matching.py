@@ -5,7 +5,7 @@ import math
 
 class RectifiedFlow(nn.Module):
     """
-    🔥 Rectified Flow for Efficient Waveform Generation
+     Rectified Flow for Efficient Waveform Generation
     - 직선적 경로로 더 효율적인 학습
     - 적은 단계로도 고품질 생성
     - FP16 최적화 적용
@@ -16,14 +16,14 @@ class RectifiedFlow(nn.Module):
         self.condition_dim = condition_dim
         self.steps = steps
         
-        # 🔥 경량화된 벡터 필드 네트워크
+        #  경량화된 벡터 필드 네트워크
         self.vector_field = RectifiedVectorField(
             dim=dim,
             condition_dim=condition_dim,
             hidden_dim=hidden_dim
         )
         
-        # 🚀 최적화 설정
+        #  최적화 설정
         self._compiled = False
         
     def compile_model(self):
@@ -32,13 +32,13 @@ class RectifiedFlow(nn.Module):
             try:
                 self.vector_field = torch.compile(self.vector_field, mode='max-autotune')
                 self._compiled = True
-                print("🚀 RectifiedFlow compiled")
+                print(" RectifiedFlow compiled")
             except Exception as e:
-                print(f"⚠️ RectifiedFlow compilation failed: {e}")
+                print(f" RectifiedFlow compilation failed: {e}")
     
     def compute_loss(self, x1, condition):
         """
-        🔥 Rectified Flow 손실 계산
+         Rectified Flow 손실 계산
         더 직선적인 경로로 학습 효율성 향상
         
         Args:
@@ -54,14 +54,14 @@ class RectifiedFlow(nn.Module):
         # 노이즈 샘플링 (가우시안)
         x0 = torch.randn_like(x1)
         
-        # 🔥 Rectified Flow: 직선적 보간
+        #  Rectified Flow: 직선적 보간
         t_expanded = t.view(B, 1)
         x_t = (1 - t_expanded) * x0 + t_expanded * x1
         
-        # 🔥 타겟 속도 (직선 경로)
+        #  타겟 속도 (직선 경로)
         target_velocity = x1 - x0
         
-        # 🔥 속도 예측
+        #  속도 예측
         predicted_velocity = self.vector_field(x_t, t, condition)
         
         # MSE 손실
@@ -72,7 +72,7 @@ class RectifiedFlow(nn.Module):
     @torch.amp.autocast('cuda')
     def sample(self, condition, num_steps=None, x0=None, method='fast_rectified'):
         """
-        🚀 최적화된 샘플링 - 여러 빠른 방법 지원
+         최적화된 샘플링 - 여러 빠른 방법 지원
         """
         if num_steps is None:
             num_steps = max(4, self.steps // 5)  # 기본적으로 매우 빠르게
@@ -95,7 +95,7 @@ class RectifiedFlow(nn.Module):
     
     def _sample_fast_rectified(self, condition, x0, num_steps):
         """
-        🚀 Ultra-fast Rectified Flow 샘플링
+         Ultra-fast Rectified Flow 샘플링
         - 적응적 단계 크기
         - 고차 정확도
         """
@@ -215,7 +215,7 @@ class RectifiedFlow(nn.Module):
 
 class RectifiedVectorField(nn.Module):
     """
-    🔥 최적화된 벡터 필드 네트워크
+     최적화된 벡터 필드 네트워크
     - FP16 최적화
     - 메모리 효율적 설계
     - 컴파일 최적화 적용
@@ -226,10 +226,10 @@ class RectifiedVectorField(nn.Module):
         self.dim = dim
         self.condition_dim = condition_dim
         
-        # 🔥 시간 임베딩 (최적화)
+        #  시간 임베딩 (최적화)
         self.time_embedding = OptimizedTimeEmbedding(hidden_dim)
         
-        # 🔥 효율적인 파형 프로젝션
+        #  효율적인 파형 프로젝션
         self.waveform_proj = nn.Sequential(
             nn.Linear(dim, hidden_dim),
             nn.SiLU(),
@@ -240,7 +240,7 @@ class RectifiedVectorField(nn.Module):
         # 조건 프로젝션
         self.condition_proj = nn.Linear(condition_dim, hidden_dim // 4)
         
-        # 🔥 최적화된 메인 네트워크
+        #  최적화된 메인 네트워크
         self.net = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim),
             nn.SiLU(),
@@ -252,7 +252,7 @@ class RectifiedVectorField(nn.Module):
             nn.Linear(hidden_dim, dim)  # 출력: 파형 속도
         )
         
-        # 🔥 가중치 초기화 최적화
+        #  가중치 초기화 최적화
         self._initialize_weights()
         
     def _initialize_weights(self):
@@ -317,7 +317,7 @@ class OptimizedTimeEmbedding(nn.Module):
             
         return emb
 
-# 🔥 추가 최적화 유틸리티들
+#  추가 최적화 유틸리티들
 class FlowScheduler:
     """동적 스케줄링으로 추론 속도 최적화"""
     
@@ -342,7 +342,7 @@ class FlowScheduler:
         steps = int(min_steps + (max_steps - min_steps) * progress)
         return min(steps, max_steps)
 
-# 🚀 성능 최적화를 위한 컴파일 래퍼
+#  성능 최적화를 위한 컴파일 래퍼
 def compile_rectified_flow(model):
     """RectifiedFlow 모델 컴파일"""
     try:
@@ -352,10 +352,10 @@ def compile_rectified_flow(model):
                 mode='max-autotune',
                 dynamic=True
             )
-            print("🚀 RectifiedFlow vector field compiled")
+            print(" RectifiedFlow vector field compiled")
         else:
-            print("⚠️ torch.compile not available")
+            print(" torch.compile not available")
     except Exception as e:
-        print(f"⚠️ Compilation failed: {e}")
+        print(f" Compilation failed: {e}")
     
     return model

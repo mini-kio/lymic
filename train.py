@@ -18,7 +18,7 @@ warnings.filterwarnings("ignore", category=UserWarning)
 
 class OptimizedVoiceConversionTrainer:
     """
-    🚀 최적화된 Voice Conversion Trainer
+     최적화된 Voice Conversion Trainer
     - AMP FP16 혼합 정밀도
     - Rectified Flow 
     - F0 조건부 생성
@@ -29,15 +29,15 @@ class OptimizedVoiceConversionTrainer:
         self.config = config
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
-        # 🔥 AMP 스케일러 초기화
+        #  AMP 스케일러 초기화
         self.scaler = GradScaler()
         self.use_amp = config.get('use_amp', True) and torch.cuda.is_available()
         
-        print(f"🚀 Initializing trainer with:")
+        print(f" Initializing trainer with:")
         print(f"   Device: {self.device}")
-        print(f"   AMP FP16: {'✅ Enabled' if self.use_amp else '❌ Disabled'}")
+        print(f"   AMP FP16: {' Enabled' if self.use_amp else ' Disabled'}")
         
-        # 🔥 모델 초기화
+        #  모델 초기화
         self.model = VoiceConversionModel(
             d_model=config.get('d_model', 768),
             ssm_layers=config.get('ssm_layers', 3),
@@ -50,14 +50,14 @@ class OptimizedVoiceConversionTrainer:
             use_f0_conditioning=config.get('use_f0_conditioning', True)
         ).to(self.device)
         
-        # 🚀 모델 컴파일 (PyTorch 2.0+)
+        #  모델 컴파일 (PyTorch 2.0+)
         if config.get('compile_model', True):
             self.model.compile_model()
         
-        print(f"🎵 F0 conditioning: {'✅ Enabled' if config.get('use_f0_conditioning', True) else '❌ Disabled'}")
-        print(f"🔍 Retrieval: {'✅ Enabled' if config.get('use_retrieval', True) else '❌ Disabled'}")
+        print(f" F0 conditioning: {' Enabled' if config.get('use_f0_conditioning', True) else ' Disabled'}")
+        print(f" Retrieval: {' Enabled' if config.get('use_retrieval', True) else ' Disabled'}")
         
-        # 🔥 최적화된 옵티마이저
+        #  최적화된 옵티마이저
         self._setup_optimizer()
         
         # 스케줄러
@@ -75,7 +75,7 @@ class OptimizedVoiceConversionTrainer:
         self.f0_weight = config.get('f0_weight', 0.1)
         self.vuv_weight = config.get('vuv_weight', 0.1)
         
-        # 🔥 동적 스케줄링
+        #  동적 스케줄링
         self.flow_scheduler = FlowScheduler()
         
         # 로깅
@@ -110,7 +110,7 @@ class OptimizedVoiceConversionTrainer:
             }
         ]
         
-        # 🔥 AdamW with fused optimization
+        #  AdamW with fused optimization
         self.optimizer = optim.AdamW(
             optimizer_grouped_parameters,
             lr=self.config.get('lr', 1e-4),
@@ -122,14 +122,14 @@ class OptimizedVoiceConversionTrainer:
         trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
         total_params = sum(p.numel() for p in self.model.parameters())
         
-        print(f"⚙️ Optimizer setup:")
+        print(f" Optimizer setup:")
         print(f"   Total parameters: {total_params:,}")
         print(f"   Trainable parameters: {trainable_params:,}")
         print(f"   Trainable ratio: {trainable_params/total_params*100:.1f}%")
-        print(f"   Fused AdamW: {'✅ Enabled' if torch.cuda.is_available() else '❌ Disabled'}")
+        print(f"   Fused AdamW: {' Enabled' if torch.cuda.is_available() else ' Disabled'}")
     
     def train_epoch(self, train_loader, epoch):
-        """🔥 AMP FP16 최적화된 훈련 에포크"""
+        """ AMP FP16 최적화된 훈련 에포크"""
         self.model.train()
         
         total_loss = 0
@@ -163,7 +163,7 @@ class OptimizedVoiceConversionTrainer:
             if vuv_target is not None:
                 vuv_target = vuv_target.to(self.device, non_blocking=True)
             
-            # 🔥 AMP 혼합 정밀도 순전파
+            #  AMP 혼합 정밀도 순전파
             with autocast(enabled=self.use_amp):
                 outputs = self.model(
                     source_waveform=source_waveform,
@@ -179,7 +179,7 @@ class OptimizedVoiceConversionTrainer:
                 loss = outputs['total_loss']
                 flow_loss = outputs['flow_loss']
             
-            # 🔥 AMP 스케일된 역전파
+            #  AMP 스케일된 역전파
             self.optimizer.zero_grad(set_to_none=True)  # 메모리 효율성
             if self.use_amp:
                 self.scaler.scale(loss).backward()
@@ -272,7 +272,7 @@ class OptimizedVoiceConversionTrainer:
     
     @torch.no_grad()
     def validate(self, val_loader, epoch):
-        """🚀 최적화된 검증"""
+        """ 최적화된 검증"""
         self.model.eval()
         
         total_loss = 0
@@ -333,17 +333,17 @@ class OptimizedVoiceConversionTrainer:
     
     def train(self, train_loader, val_loader=None):
         """메인 훈련 루프"""
-        print(f"\n🚀 Starting optimized training:")
+        print(f"\n Starting optimized training:")
         print(f"   Rectified Flow steps: {self.config.get('flow_steps', 20)}")
-        print(f"   AMP FP16: {'✅' if self.use_amp else '❌'}")
-        print(f"   Model compilation: {'✅' if self.config.get('compile_model', True) else '❌'}")
+        print(f"   AMP FP16: {'' if self.use_amp else ''}")
+        print(f"   Model compilation: {'' if self.config.get('compile_model', True) else ''}")
         
         best_val_loss = float('inf')
         
         for epoch in range(self.config.get('max_epochs', 80)):
             epoch_start = time.time()
             
-            print(f"\n🔥 Epoch {epoch+1}/{self.config.get('max_epochs', 80)}")
+            print(f"\n Epoch {epoch+1}/{self.config.get('max_epochs', 80)}")
             
             # 검색 데이터 수집 (첫 에포크)
             if epoch == 0 and self.model.use_retrieval:
@@ -352,29 +352,29 @@ class OptimizedVoiceConversionTrainer:
             # 훈련
             train_metrics = self.train_epoch(train_loader, epoch)
             
-            print(f"📊 Train - Loss: {train_metrics['total_loss']:.4f}, " +
+            print(f" Train - Loss: {train_metrics['total_loss']:.4f}, " +
                   f"Flow: {train_metrics['flow_loss']:.4f}, " +
                   f"Time: {train_metrics['epoch_time']:.1f}s")
             
             if train_metrics['f0_loss'] > 0:
-                print(f"        🎵 F0: {train_metrics['f0_loss']:.4f}, " +
+                print(f"         F0: {train_metrics['f0_loss']:.4f}, " +
                       f"VUV: {train_metrics['vuv_loss']:.4f}")
             
             # 검증
             if val_loader is not None:
                 val_metrics = self.validate(val_loader, epoch)
-                print(f"📊 Val   - Loss: {val_metrics['total_loss']:.4f}, " +
+                print(f" Val   - Loss: {val_metrics['total_loss']:.4f}, " +
                       f"Flow: {val_metrics['flow_loss']:.4f}")
                 
                 if val_metrics['f0_loss'] > 0:
-                    print(f"        🎵 F0: {val_metrics['f0_loss']:.4f}, " +
+                    print(f"         F0: {val_metrics['f0_loss']:.4f}, " +
                           f"VUV: {val_metrics['vuv_loss']:.4f}")
                 
                 # 최고 모델 저장
                 if val_metrics['total_loss'] < best_val_loss:
                     best_val_loss = val_metrics['total_loss']
                     self.save_checkpoint(f"best_model_epoch_{epoch+1}.pt", epoch)
-                    print(f"💾 New best model! (Loss: {best_val_loss:.4f})")
+                    print(f" New best model! (Loss: {best_val_loss:.4f})")
             
             # 정기 체크포인트
             if (epoch + 1) % self.config.get('save_every', 10) == 0:
@@ -384,7 +384,7 @@ class OptimizedVoiceConversionTrainer:
             if (epoch + 1) % 20 == 0:
                 self._print_performance_stats(epoch + 1)
         
-        print(f"\n🎉 Training completed!")
+        print(f"\n Training completed!")
         self._print_final_stats()
     
     def _collect_retrieval_data(self, train_loader):
@@ -392,7 +392,7 @@ class OptimizedVoiceConversionTrainer:
         if not self.model.use_retrieval:
             return
         
-        print("🔍 Collecting retrieval features...")
+        print(" Collecting retrieval features...")
         self.model.eval()
         
         with torch.no_grad(), torch.cuda.amp.autocast(enabled=self.use_amp):
@@ -424,7 +424,7 @@ class OptimizedVoiceConversionTrainer:
                     condition_pooled, target_speaker_id
                 )
         
-        print("✅ Retrieval data collection completed")
+        print(" Retrieval data collection completed")
         self.model.train()
     
     def save_checkpoint(self, filename, epoch):
@@ -440,21 +440,21 @@ class OptimizedVoiceConversionTrainer:
             'memory_usage': self.memory_usage
         }
         torch.save(checkpoint, filename)
-        print(f"💾 Checkpoint saved: {filename}")
+        print(f" Checkpoint saved: {filename}")
     
     def _print_performance_stats(self, epoch):
         """성능 통계 출력"""
         if self.training_times:
             avg_time = sum(self.training_times[-10:]) / min(10, len(self.training_times))
-            print(f"⚡ Avg epoch time (last 10): {avg_time:.1f}s")
+            print(f" Avg epoch time (last 10): {avg_time:.1f}s")
         
         if self.memory_usage and torch.cuda.is_available():
             max_memory = max(self.memory_usage[-50:]) if len(self.memory_usage) >= 50 else max(self.memory_usage)
-            print(f"🖥️ Peak GPU memory: {max_memory:.2f} GB")
+            print(f" Peak GPU memory: {max_memory:.2f} GB")
     
     def _print_final_stats(self):
         """최종 통계 출력"""
-        print(f"\n📊 Final Training Statistics:")
+        print(f"\n Final Training Statistics:")
         if self.training_times:
             total_time = sum(self.training_times)
             avg_time = total_time / len(self.training_times)
@@ -473,7 +473,7 @@ class OptimizedVoiceConversionTrainer:
 def main():
     """최적화된 훈련 메인 함수"""
     config = {
-        # 🔥 최적화 설정
+        #  최적화 설정
         'use_amp': True,  # AMP FP16 활성화
         'compile_model': True,  # PyTorch 2.0 컴파일
         
@@ -486,7 +486,7 @@ def main():
         'use_retrieval': True,
         'lora_rank': 16,
         'adapter_dim': 64,
-        'use_f0_conditioning': True,  # 🎵 F0 조건부 생성
+        'use_f0_conditioning': True,  #  F0 조건부 생성
         
         # 훈련 설정
         'batch_size': 12,  # FP16으로 더 큰 배치 가능
@@ -510,7 +510,7 @@ def main():
     }
     
     # 데이터셋 로드
-    print("📁 Loading optimized dataset...")
+    print(" Loading optimized dataset...")
     
     if Path(config['data_dir']).is_dir() and not (Path(config['data_dir']) / 'train').exists():
         full_dataset = VoiceConversionDataset(
@@ -564,14 +564,14 @@ def main():
     config['n_speakers'] = dataset_info['total_speakers']
     config['steps_per_epoch'] = len(train_dataset) // config['batch_size']
     
-    print(f"\n🎯 Optimized Dataset Info:")
-    print(f"   👥 Speakers: {dataset_info['total_speakers']}")
-    print(f"   📊 Training pairs: {len(train_dataset)}")
-    print(f"   🔍 Validation pairs: {len(val_dataset)}")
-    print(f"   🎵 F0 conditioning: ✅ Enabled")
-    print(f"   🚀 Rectified Flow: ✅ Enabled")
+    print(f"\n Optimized Dataset Info:")
+    print(f"    Speakers: {dataset_info['total_speakers']}")
+    print(f"    Training pairs: {len(train_dataset)}")
+    print(f"    Validation pairs: {len(val_dataset)}")
+    print(f"    F0 conditioning:  Enabled")
+    print(f"    Rectified Flow:  Enabled")
     
-    # 🔥 최적화된 데이터 로더
+    #  최적화된 데이터 로더
     train_loader = DataLoader(
         train_dataset,
         batch_size=config['batch_size'],

@@ -19,7 +19,7 @@ warnings.filterwarnings("ignore", category=UserWarning)
 
 class UltraFastFineTuner:
     """
-    🚀 Ultra-Fast Fine-tuner with All Optimizations
+     Ultra-Fast Fine-tuner with All Optimizations
     - AMP FP16 혼합 정밀도
     - LoRA + Adapter 효율적 학습
     - Rectified Flow 빠른 수렴
@@ -32,15 +32,15 @@ class UltraFastFineTuner:
         self.config = config
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
-        # 🔥 AMP 설정
+        #  AMP 설정
         self.scaler = GradScaler()
         self.use_amp = config.get('use_amp', True) and torch.cuda.is_available()
         
-        print(f"🚀 Initializing UltraFastFineTuner:")
+        print(f" Initializing UltraFastFineTuner:")
         print(f"   Device: {self.device}")
-        print(f"   AMP FP16: {'✅ Enabled' if self.use_amp else '❌ Disabled'}")
+        print(f"   AMP FP16: {' Enabled' if self.use_amp else ' Disabled'}")
         
-        # 🔥 모델 로드
+        #  모델 로드
         self.model = self._load_base_model()
         
         # 파인튜닝 모드 설정
@@ -64,7 +64,7 @@ class UltraFastFineTuner:
         self.training_times = []
         self.memory_usage = []
         
-        print("✅ Ultra-fast fine-tuner ready!")
+        print(" Ultra-fast fine-tuner ready!")
     
     def _load_base_model(self):
         """기본 모델 로드"""
@@ -83,7 +83,7 @@ class UltraFastFineTuner:
         # 기본 모델 가중치 로드
         base_model_path = self.config.get('base_model_path', None)
         if base_model_path and Path(base_model_path).exists():
-            print(f"📦 Loading base model from {base_model_path}")
+            print(f" Loading base model from {base_model_path}")
             checkpoint = torch.load(base_model_path, map_location=self.device)
             
             # 호환 가능한 가중치만 로드
@@ -94,25 +94,25 @@ class UltraFastFineTuner:
                 if k in model_dict and v.shape == model_dict[k].shape:
                     pretrained_dict[k] = v
                 else:
-                    print(f"⚠️ Skipping {k}: shape mismatch or not found")
+                    print(f" Skipping {k}: shape mismatch or not found")
             
             model_dict.update(pretrained_dict)
             model.load_state_dict(model_dict)
             
-            print(f"✅ Loaded {len(pretrained_dict)}/{len(model_dict)} parameters")
+            print(f" Loaded {len(pretrained_dict)}/{len(model_dict)} parameters")
         else:
-            print("🔧 Starting fine-tuning from scratch")
+            print(" Starting fine-tuning from scratch")
         
-        # 🔥 Half precision으로 변환 (AMP 사용시)
+        #  Half precision으로 변환 (AMP 사용시)
         if self.use_amp:
             # 특정 컴포넌트만 half precision으로 변환
             # HuBERT는 float32 유지 (안정성을 위해)
             for name, module in model.named_children():
                 if name != 'hubert':
                     module.half()
-            print("🔥 Model converted to mixed precision")
+            print(" Model converted to mixed precision")
         
-        # 🚀 모델 컴파일
+        #  모델 컴파일
         if self.config.get('compile_model', True):
             model.compile_model()
         
@@ -131,7 +131,7 @@ class UltraFastFineTuner:
         total_params = sum(p.numel() for p in self.model.parameters())
         trainable_param_count = sum(p.numel() for p in trainable_params)
         
-        print(f"🎯 Fine-tuning setup:")
+        print(f" Fine-tuning setup:")
         print(f"   Total parameters: {total_params:,}")
         print(f"   Trainable parameters: {trainable_param_count:,}")
         print(f"   Training ratio: {trainable_param_count/total_params*100:.1f}%")
@@ -140,10 +140,10 @@ class UltraFastFineTuner:
         # 검색 모듈 준비
         if self.model.use_retrieval:
             self.retrieval_data = []
-            print("🔍 Retrieval module enabled for fine-tuning")
+            print(" Retrieval module enabled for fine-tuning")
     
     def _setup_optimized_optimizer(self):
-        """🔥 최적화된 옵티마이저 설정"""
+        """ 최적화된 옵티마이저 설정"""
         trainable_params = self.model.get_trainable_parameters()
         
         # 파라미터 그룹 분리 (가중치 감쇠 적용/미적용)
@@ -164,7 +164,7 @@ class UltraFastFineTuner:
             }
         ]
         
-        # 🔥 Fused AdamW (CUDA 최적화)
+        #  Fused AdamW (CUDA 최적화)
         self.optimizer = optim.AdamW(
             optimizer_grouped_parameters,
             lr=self.config.get('lr', 5e-5),
@@ -173,7 +173,7 @@ class UltraFastFineTuner:
             fused=True if torch.cuda.is_available() else False
         )
         
-        # 🔥 OneCycleLR 스케줄러 (빠른 수렴)
+        #  OneCycleLR 스케줄러 (빠른 수렴)
         self.scheduler = optim.lr_scheduler.OneCycleLR(
             self.optimizer,
             max_lr=self.config.get('lr', 5e-5),
@@ -183,18 +183,18 @@ class UltraFastFineTuner:
             final_div_factor=1000  # 최종 LR = max_lr / 1000
         )
         
-        print(f"⚙️ Optimized optimizer setup:")
+        print(f" Optimized optimizer setup:")
         print(f"   Parameter groups: {len(optimizer_grouped_parameters)}")
-        print(f"   Fused AdamW: {'✅' if torch.cuda.is_available() else '❌'}")
-        print(f"   OneCycleLR: ✅ Enabled")
+        print(f"   Fused AdamW: {'' if torch.cuda.is_available() else ''}")
+        print(f"   OneCycleLR:  Enabled")
     
     @torch.no_grad()
     def collect_retrieval_data(self, dataloader):
-        """🔍 검색 데이터 수집 (AMP 최적화)"""
+        """ 검색 데이터 수집 (AMP 최적화)"""
         if not self.model.use_retrieval:
             return
         
-        print("🔍 Collecting retrieval features with AMP...")
+        print(" Collecting retrieval features with AMP...")
         self.model.eval()
         
         with torch.cuda.amp.autocast(enabled=self.use_amp):
@@ -232,11 +232,11 @@ class UltraFastFineTuner:
                     target_speaker_id
                 )
         
-        print("✅ Retrieval data collection completed")
+        print(" Retrieval data collection completed")
         self.model.train()
     
     def train_epoch(self, train_loader, epoch):
-        """🔥 AMP 최적화된 훈련 에포크"""
+        """ AMP 최적화된 훈련 에포크"""
         self.model.train()
         self.model._is_finetuning = True
         
@@ -270,7 +270,7 @@ class UltraFastFineTuner:
             if vuv_target is not None:
                 vuv_target = vuv_target.to(self.device, non_blocking=True)
             
-            # 🔥 AMP 순전파
+            #  AMP 순전파
             with autocast(enabled=self.use_amp):
                 outputs = self.model(
                     source_waveform=source_waveform,
@@ -285,7 +285,7 @@ class UltraFastFineTuner:
                 
                 loss = outputs['total_loss']
             
-            # 🔥 AMP 역전파
+            #  AMP 역전파
             self.optimizer.zero_grad(set_to_none=True)  # 메모리 효율성
             
             if self.use_amp:
@@ -383,7 +383,7 @@ class UltraFastFineTuner:
     
     @torch.no_grad()
     def validate(self, val_loader, epoch):
-        """🚀 최적화된 검증"""
+        """ 최적화된 검증"""
         self.model.eval()
         
         total_loss = 0
@@ -442,11 +442,11 @@ class UltraFastFineTuner:
     
     def fine_tune(self, train_loader, val_loader=None):
         """메인 파인튜닝 루프"""
-        print(f"\n🚀 Starting ultra-fast fine-tuning:")
-        print(f"   AMP FP16: {'✅' if self.use_amp else '❌'}")
-        print(f"   Rectified Flow: ✅ ({self.config.get('flow_steps', 20)} steps)")
-        print(f"   F0 conditioning: {'✅' if self.config.get('use_f0_conditioning', True) else '❌'}")
-        print(f"   Model compilation: {'✅' if self.config.get('compile_model', True) else '❌'}")
+        print(f"\n Starting ultra-fast fine-tuning:")
+        print(f"   AMP FP16: {'' if self.use_amp else ''}")
+        print(f"   Rectified Flow:  ({self.config.get('flow_steps', 20)} steps)")
+        print(f"   F0 conditioning: {'' if self.config.get('use_f0_conditioning', True) else ''}")
+        print(f"   Model compilation: {'' if self.config.get('compile_model', True) else ''}")
         
         # 검색 데이터 수집 (첫 에포크)
         if self.model.use_retrieval:
@@ -457,12 +457,12 @@ class UltraFastFineTuner:
         max_patience = self.config.get('early_stopping_patience', 10)
         
         for epoch in range(self.config.get('max_epochs', 50)):
-            print(f"\n🔥 Epoch {epoch+1}/{self.config.get('max_epochs', 50)}")
+            print(f"\n Epoch {epoch+1}/{self.config.get('max_epochs', 50)}")
             
             # 훈련
             train_metrics = self.train_epoch(train_loader, epoch)
             
-            print(f"📊 Train - Loss: {train_metrics['total_loss']:.4f}, " +
+            print(f" Train - Loss: {train_metrics['total_loss']:.4f}, " +
                   f"Flow: {train_metrics['flow_loss']:.4f}, " +
                   f"Aux: {train_metrics['aux_loss']:.4f}, " +
                   f"Time: {train_metrics['epoch_time']:.1f}s")
@@ -470,7 +470,7 @@ class UltraFastFineTuner:
             # 검증
             if val_loader is not None:
                 val_metrics = self.validate(val_loader, epoch)
-                print(f"📊 Val   - Loss: {val_metrics['total_loss']:.4f}, " +
+                print(f" Val   - Loss: {val_metrics['total_loss']:.4f}, " +
                       f"Flow: {val_metrics['flow_loss']:.4f}, " +
                       f"Aux: {val_metrics['aux_loss']:.4f}")
                 
@@ -479,11 +479,11 @@ class UltraFastFineTuner:
                     best_val_loss = val_metrics['total_loss']
                     patience = 0
                     self.save_checkpoint(f"best_finetune_epoch_{epoch+1}.pt", epoch)
-                    print(f"💾 New best model! (Loss: {best_val_loss:.4f})")
+                    print(f" New best model! (Loss: {best_val_loss:.4f})")
                 else:
                     patience += 1
                     if patience >= max_patience:
-                        print(f"⚡ Early stopping triggered (patience: {patience})")
+                        print(f" Early stopping triggered (patience: {patience})")
                         break
             
             # 정기 체크포인트
@@ -494,7 +494,7 @@ class UltraFastFineTuner:
             if (epoch + 1) % 10 == 0:
                 self._print_performance_stats(epoch + 1)
         
-        print(f"\n🎉 Fine-tuning completed!")
+        print(f"\n Fine-tuning completed!")
         self._print_final_stats()
     
     def save_checkpoint(self, filename, epoch):
@@ -517,7 +517,7 @@ class UltraFastFineTuner:
         }
         
         torch.save(checkpoint, filename)
-        print(f"💾 Fine-tuning checkpoint saved: {filename}")
+        print(f" Fine-tuning checkpoint saved: {filename}")
     
     def load_checkpoint(self, filename):
         """체크포인트 로드"""
@@ -530,24 +530,24 @@ class UltraFastFineTuner:
         if self.use_amp and checkpoint.get('scaler_state_dict'):
             self.scaler.load_state_dict(checkpoint['scaler_state_dict'])
         
-        print(f"✅ Checkpoint loaded: {filename}")
+        print(f" Checkpoint loaded: {filename}")
     
     def _print_performance_stats(self, epoch):
         """성능 통계 출력"""
         if self.training_times:
             recent_times = self.training_times[-5:]  # 최근 5 에포크
             avg_time = sum(recent_times) / len(recent_times)
-            print(f"⚡ Avg epoch time (recent): {avg_time:.1f}s")
+            print(f" Avg epoch time (recent): {avg_time:.1f}s")
         
         if self.memory_usage and torch.cuda.is_available():
             recent_memory = self.memory_usage[-20:]  # 최근 20 배치
             avg_memory = sum(recent_memory) / len(recent_memory)
             max_memory = max(recent_memory)
-            print(f"🖥️ GPU memory - Avg: {avg_memory:.1f}MB, Peak: {max_memory:.1f}MB")
+            print(f" GPU memory - Avg: {avg_memory:.1f}MB, Peak: {max_memory:.1f}MB")
     
     def _print_final_stats(self):
         """최종 통계"""
-        print(f"\n📊 Final Fine-tuning Statistics:")
+        print(f"\n Final Fine-tuning Statistics:")
         
         if self.training_times:
             total_time = sum(self.training_times)
@@ -563,16 +563,16 @@ class UltraFastFineTuner:
             print(f"   Peak GPU memory: {max_memory:.1f}MB")
         
         print(f"   Optimizations used:")
-        print(f"     AMP FP16: {'✅' if self.use_amp else '❌'}")
-        print(f"     Fused AdamW: {'✅' if torch.cuda.is_available() else '❌'}")
-        print(f"     OneCycleLR: ✅")
-        print(f"     Gradient checkpointing: ✅")
-        print(f"     Model compilation: {'✅' if self.config.get('compile_model', True) else '❌'}")
+        print(f"     AMP FP16: {'' if self.use_amp else ''}")
+        print(f"     Fused AdamW: {'' if torch.cuda.is_available() else ''}")
+        print(f"     OneCycleLR: ")
+        print(f"     Gradient checkpointing: ")
+        print(f"     Model compilation: {'' if self.config.get('compile_model', True) else ''}")
 
 def main():
     """최적화된 파인튜닝 메인 함수"""
     config = {
-        # 🔥 최적화 설정
+        #  최적화 설정
         'use_amp': True,
         'compile_model': True,
         
@@ -612,7 +612,7 @@ def main():
     }
     
     # 데이터셋 로드
-    print("📁 Loading fine-tuning dataset...")
+    print(" Loading fine-tuning dataset...")
     
     # 파인튜닝 데이터셋 (더 작고 집중된 데이터)
     if Path(config['data_dir']).is_dir() and not (Path(config['data_dir']) / 'train').exists():
@@ -677,12 +677,12 @@ def main():
     config['n_speakers'] = max(config.get('n_speakers', 256), dataset_info['total_speakers'])
     config['steps_per_epoch'] = len(train_dataset) // config['batch_size']
     
-    print(f"\n🎯 Ultra-fast Fine-tuning Dataset:")
-    print(f"   👥 Speakers: {dataset_info['total_speakers']}")
-    print(f"   📊 Training pairs: {len(train_dataset)}")
-    print(f"   🔍 Validation pairs: {len(val_dataset)}")
+    print(f"\n Ultra-fast Fine-tuning Dataset:")
+    print(f"    Speakers: {dataset_info['total_speakers']}")
+    print(f"    Training pairs: {len(train_dataset)}")
+    print(f"    Validation pairs: {len(val_dataset)}")
     
-    # 🔥 최적화된 데이터 로더
+    #  최적화된 데이터 로더
     train_loader = DataLoader(
         train_dataset,
         batch_size=config['batch_size'],
@@ -714,20 +714,20 @@ if __name__ == "__main__":
     main()
 
 """
-🚀 Ultra-Fast Fine-tuning Features:
+ Ultra-Fast Fine-tuning Features:
 
-✅ AMP FP16 혼합 정밀도
-✅ Rectified Flow (20 steps → 6 steps)
-✅ LoRA + Adapter 효율적 학습 (5-10% 파라미터만)
-✅ F0 조건부 생성
-✅ 컴파일 최적화
-✅ 동적 스케줄링
-✅ 조기 종료
-✅ 캐시된 F0 추출
-✅ 최적화된 데이터 로더
-✅ Fused AdamW
-✅ OneCycleLR 스케줄러
-✅ 그래디언트 체크포인팅
+ AMP FP16 혼합 정밀도
+ Rectified Flow (20 steps → 6 steps)
+ LoRA + Adapter 효율적 학습 (5-10% 파라미터만)
+ F0 조건부 생성
+ 컴파일 최적화
+ 동적 스케줄링
+ 조기 종료
+ 캐시된 F0 추출
+ 최적화된 데이터 로더
+ Fused AdamW
+ OneCycleLR 스케줄러
+ 그래디언트 체크포인팅
 
 예상 성능 향상:
 - 훈련 속도: 3-5배 빠름
