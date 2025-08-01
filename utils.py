@@ -318,7 +318,7 @@ class GPUAcceleratedF0Cache:
             torch.cuda.empty_cache()
             torch.backends.cudnn.benchmark = True
         
-        print(f"🚀 GPU F0 Cache initialized:")
+        print(f"GPU F0 Cache initialized:")
         print(f"   Device: {self.device}")
         print(f"   Batch size: {self.batch_size}")
         print(f"   Model: {self.model_capacity}")
@@ -349,7 +349,7 @@ class GPUAcceleratedF0Cache:
     
     def build_cache_parallel_gpu(self, all_files, cache_dir, sample_rate=44100, hop_length=512):
         """GPU 병렬 F0 캐시 구축"""
-        print(f"🚀 Building GPU F0 cache for {len(all_files)} files...")
+        print(f"Building GPU F0 cache for {len(all_files)} files...")
         
         total_processed = 0
         failed_files = []
@@ -410,7 +410,7 @@ class GPUAcceleratedF0Cache:
                         failed_files.append((str(file_path), f"Cache save failed: {e}"))
         
         # 결과 보고
-        print(f"✅ GPU F0 cache completed:")
+        print(f"GPU F0 cache completed:")
         print(f"   Processed: {total_processed} files")
         if failed_files:
             print(f"   Failed: {len(failed_files)} files")
@@ -469,11 +469,11 @@ class OptimizedVoiceConversionDataset(Dataset):
         # 멀티프로세싱 설정
         self.max_workers = max_workers or min(8, mp.cpu_count())
         
-        print(f"🎵 Initializing optimized dataset:")
-        print(f"   Cache: {'✓ Enabled' if self.use_cache else '✗ Disabled'}")
-        print(f"   F0 extraction: {'✓ Enabled' if self.extract_f0 else '✗ Disabled'}")
+        print(f"Initializing optimized dataset:")
+        print(f"   Cache: {'Enabled' if self.use_cache else 'Disabled'}")
+        print(f"   F0 extraction: {'Enabled' if self.extract_f0 else 'Disabled'}")
         print(f"   F0 method: {self.f0_method}")
-        print(f"   GPU cache: {'✓ Enabled' if self.use_gpu_cache else '✗ Disabled'}")
+        print(f"   GPU cache: {'Enabled' if self.use_gpu_cache else 'Disabled'}")
         print(f"   Max workers: {self.max_workers}")
         
         # 데이터 스캔
@@ -573,7 +573,7 @@ class OptimizedVoiceConversionDataset(Dataset):
         for files in self.speaker_files.values():
             all_files.extend(files)
         
-        print(f"🎵 Processing {len(all_files)} files for F0 cache...")
+        print(f"Processing {len(all_files)} files for F0 cache...")
         
         if self.use_gpu_cache and self.gpu_cache:
             # GPU 가속 캐시 구축
@@ -582,7 +582,7 @@ class OptimizedVoiceConversionDataset(Dataset):
             )
         else:
             # 기존 CPU 멀티스레딩 방식
-            print("💻 Using CPU multiprocessing for F0 cache...")
+            print("Using CPU multiprocessing for F0 cache...")
             batch_size = 50
             for i in tqdm(range(0, len(all_files), batch_size), desc="F0 Cache"):
                 batch_files = all_files[i:i+batch_size]
@@ -602,7 +602,7 @@ class OptimizedVoiceConversionDataset(Dataset):
         with open(self.cache_dir / 'f0_cache_info.json', 'w') as f:
             json.dump(cache_info, f)
         
-        print("✅ F0 cache built successfully")
+        print("F0 cache built successfully")
     
     def _extract_and_cache_f0(self, audio_file):
         """개별 파일의 F0 추출 및 캐시"""
@@ -1028,21 +1028,21 @@ def get_f0_config():
 
 def print_f0_methods():
     """사용 가능한 F0 추출 방법 출력"""
-    print("🎵 Available F0 extraction methods:")
-    print(f"   CREPE available: {'✓' if CREPE_AVAILABLE else '✗'}")
-    print(f"   SciPy available: {'✓' if SCIPY_AVAILABLE else '✗'}")
+    print("Available F0 extraction methods:")
+    print(f"   CREPE available: {'YES' if CREPE_AVAILABLE else 'NO'}")
+    print(f"   SciPy available: {'YES' if SCIPY_AVAILABLE else 'NO'}")
     print()
     
     for method, info in F0_CONFIG['methods'].items():
-        status = "✓" if method == 'pyin' or CREPE_AVAILABLE else "✗ (needs CREPE)"
+        status = "OK" if method == 'pyin' or CREPE_AVAILABLE else "SKIP (needs CREPE)"
         print(f"   {status} {method:12} - {info['description']}")
         print(f"      Speed: {info['speed']:8} | Accuracy: {info['accuracy']}")
     print()
     print("Recommended:")
-    print("  • For fastest: crepe_tiny")
-    print("  • For balanced: crepe_small (default)")
-    print("  • For best quality: hybrid")
-    print("  • For CPU only: pyin")
+    print("  - For fastest: crepe_tiny")
+    print("  - For balanced: crepe_small (default)")
+    print("  - For best quality: hybrid")
+    print("  - For CPU only: pyin")
 
 # 사용 예시 함수
 def create_optimized_dataset_with_f0(data_dir, **kwargs):
