@@ -113,7 +113,7 @@ class OptimizedInferenceEngine:
     @torch.cuda.amp.autocast()
     def convert_single_chunk(self, 
                            source_chunk: torch.Tensor,
-                           target_speaker_id: int,
+                           reference_chunk: torch.Tensor,
                            f0_chunk: Optional[torch.Tensor] = None,
                            vuv_chunk: Optional[torch.Tensor] = None,
                            semitone_shift: float = 0.0,
@@ -125,7 +125,8 @@ class OptimizedInferenceEngine:
         if source_chunk.dim() == 2:
             source_chunk = source_chunk.unsqueeze(0)  # 배치 차원 추가
         
-        target_speaker_tensor = torch.tensor([target_speaker_id], device=self.device)
+        if reference_chunk.dim() == 2:
+            reference_chunk = reference_chunk.unsqueeze(0)  # 배치 차원 추가
         
         f0_target = None
         vuv_target = None
@@ -137,7 +138,7 @@ class OptimizedInferenceEngine:
         with torch.cuda.amp.autocast(enabled=self.use_amp):
             result = self.model(
                 source_waveform=source_chunk,
-                target_speaker_id=target_speaker_tensor,
+                reference_waveform=reference_chunk,
                 f0_target=f0_target,
                 vuv_target=vuv_target,
                 semitone_shift=semitone_shift,
@@ -288,8 +289,8 @@ class OptimizedInferenceEngine:
         return merged_audio
     
     def convert_full_audio(self, 
-                         audio_path: str,
-                         target_speaker_id: int,
+                         source_audio_path: str,
+                         reference_audio_path: str,
                          output_path: str,
                          chunk_length: int = 16384,
                          overlap: int = 2048,
@@ -302,18 +303,23 @@ class OptimizedInferenceEngine:
         """
         start_time = time.time()
         
-        waveform = self.load_and_preprocess_audio(audio_path)
+        # Load source and reference audio
+        source_waveform = self.load_and_preprocess_audio(source_audio_path)
+        reference_waveform = self.load_and_preprocess_audio(reference_audio_path)
         
         f0, vuv = None, None
         if use_f0 and self.config.get('use_f0_conditioning', True):
-            print("Extracting F0 features...")
-            f0, vuv = self.extract_f0_features(waveform)
+            print("Extracting F0 features from source...")
+            f0, vuv = self.extract_f0_features(source_waveform)
             print(f"F0 extracted: {f0.shape}")
         
         if use_f0 and f0 is not None:
-            chunks = self.split_audio_with_f0(waveform, f0, vuv, chunk_length, overlap)
+            chunks = self.split_audio_with_f0(source_waveform, f0, vuv, chunk_length, overlap)
         else:
-            chunks = self._split_audio_simple(waveform, chunk_length, overlap)
+            chunks = self._split_audio_simple(source_waveform, chunk_length, overlap)
+            
+        # Reference audio chunks (same length as source)
+        reference_chunks = self._split_audio_simple(reference_waveform, chunk_length, overlap)
         
         print(f"Converting {len(chunks)} chunks...")
         converted_chunks = []
@@ -321,10 +327,14 @@ class OptimizedInferenceEngine:
         for i, chunk_data in enumerate(tqdm(chunks, desc="Converting")):
             chunk_start_time = time.time()
             
+            # Get corresponding reference chunk
+            ref_chunk_idx = min(i, len(reference_chunks) - 1)
+            reference_chunk = reference_chunks[ref_chunk_idx]['audio']
+            
             if use_f0 and f0 is not None:
                 converted_chunk = self.convert_single_chunk(
                     chunk_data['audio'],
-                    target_speaker_id,
+                    reference_chunk,
                     chunk_data['f0'],
                     chunk_data['vuv'],
                     semitone_shift,
@@ -334,7 +344,7 @@ class OptimizedInferenceEngine:
             else:
                 converted_chunk = self.convert_single_chunk(
                     chunk_data['audio'],
-                    target_speaker_id,
+                    reference_chunk,
                     None,
                     None,
                     semitone_shift,
@@ -475,9 +485,9 @@ class OptimizedInferenceEngine:
 def main():
     parser = argparse.ArgumentParser(description='Optimized Voice Conversion Inference')
     parser.add_argument('--model', '-m', required=True, help='Model checkpoint path')
-    parser.add_argument('--input', '-i', required=True, help='Input audio file')
+    parser.add_argument('--source', '-s', required=True, help='Source audio file (content)')
+    parser.add_argument('--reference', '-r', required=True, help='Reference audio file (target voice)')
     parser.add_argument('--output', '-o', required=True, help='Output audio file')
-    parser.add_argument('--speaker', '-s', type=int, required=True, help='Target speaker ID')
     
     # 최적화 설정
     parser.add_argument('--device', default='auto', help='Device (auto/cuda/cpu)')
@@ -503,24 +513,29 @@ def main():
     args = parser.parse_args()
     
     model_path = Path(args.model)
-    input_path = Path(args.input)
+    source_path = Path(args.source)
+    reference_path = Path(args.reference)
     output_path = Path(args.output)
     
     if not model_path.exists():
         print(f"Error: Model not found: {model_path}")
         return
     
-    if not input_path.exists():
-        print(f"Error: Input not found: {input_path}")
+    if not source_path.exists():
+        print(f"Error: Source audio not found: {source_path}")
+        return
+        
+    if not reference_path.exists():
+        print(f"Error: Reference audio not found: {reference_path}")
         return
     
     output_path.parent.mkdir(parents=True, exist_ok=True)
     
     print("Starting Optimized Voice Conversion")
     print(f"   Model: {model_path}")
-    print(f"   Input: {input_path}")
+    print(f"   Source: {source_path}")
+    print(f"   Reference: {reference_path}")
     print(f"   Output: {output_path}")
-    print(f"   Speaker: {args.speaker}")
     print(f"   Method: {args.method} ({args.steps} steps)")
     print(f"   F0 conditioning: {'Yes' if not args.no_f0 else 'No'}")
     print(f"   Semitone shift: {args.semitone_shift:+.1f}")
@@ -533,19 +548,11 @@ def main():
     )
     
     if args.benchmark:
-        results = engine.benchmark_performance(
-            audio_path=str(input_path),
-            target_speaker_id=args.speaker
-        )
-        
-        print("\nBenchmark Results:")
-        for key, stats in results.items():
-            if 'error' not in stats:
-                print(f"   {key}: RTF={stats['rtf']:.2f}x, Memory={stats['peak_memory_mb']:.1f}MB")
+        print("Benchmark mode not yet implemented for reference-based conversion")
     else:
         stats = engine.convert_full_audio(
-            audio_path=str(input_path),
-            target_speaker_id=args.speaker,
+            source_audio_path=str(source_path),
+            reference_audio_path=str(reference_path),
             output_path=str(output_path),
             chunk_length=args.chunk_length,
             overlap=args.overlap,
@@ -559,40 +566,47 @@ if __name__ == '__main__':
     main()
 
 """
-Optimized Inference Examples:
+Reference-based Voice Conversion Examples:
 
-# 1. 기본 빠른 변환
-python inference.py -m model.pt -i input.wav -o output.wav -s 1
+# 1. 기본 빠른 변환 (Reference-based)
+python inference.py -m model.pt -s source.wav -r reference.wav -o output.wav
 
 # 2. 고품질 변환 (더 많은 단계)
-python inference.py -m model.pt -i input.wav -o output.wav -s 1 \\
+python inference.py -m model.pt -s source.wav -r reference.wav -o output.wav \\
                    --method heun --steps 12
 
 # 3. 초고속 변환 (F0 없이)
-python inference.py -m model.pt -i input.wav -o output.wav -s 1 \\
+python inference.py -m model.pt -s source.wav -r reference.wav -o output.wav \\
                    --method fast_rectified --steps 4 --no-f0
 
-# 노래 변환 예시들
+# 노래 변환 예시들 (Reference voice로 커버)
 # 남성 -> 여성 (1옥타브 위)
-python inference.py -m model.pt -i song.wav -o song_female.wav -s 1 \\
+python inference.py -m model.pt -s male_song.wav -r female_ref.wav -o female_cover.wav \\
                    --semitone-shift +12
 
 # 여성 -> 남성 (1옥타브 아래)  
-python inference.py -m model.pt -i song.wav -o song_male.wav -s 2 \\
+python inference.py -m model.pt -s female_song.wav -r male_ref.wav -o male_cover.wav \\
                    --semitone-shift -12
 
 # 미세 조정 (+2 세미톤, 온음 위)
-python inference.py -m model.pt -i song.wav -o song_higher.wav -s 1 \\
+python inference.py -m model.pt -s source.wav -r target_voice.wav -o output.wav \\
                    --semitone-shift +2.0
 
-# 4. 성능 벤치마크
-python inference.py -m model.pt -i input.wav -o output.wav -s 1 --benchmark
-
 # 5. CPU 추론
-python inference.py -m model.pt -i input.wav -o output.wav -s 1 \\
+python inference.py -m model.pt -s source.wav -r reference.wav -o output.wav \\
                    --device cpu --no-amp --no-compile
 
 # 6. 메모리 절약 (작은 청크)
-python inference.py -m model.pt -i input.wav -o output.wav -s 1 \\
+python inference.py -m model.pt -s source.wav -r reference.wav -o output.wav \\
                    --chunk-length 8192 --overlap 1024
+
+# Real-world Use Cases:
+# 1. 팟캐스트 목소리 변환
+python inference.py -m model.pt -s podcast_content.wav -r celebrity_voice.wav -o celebrity_podcast.wav
+
+# 2. 노래 커버 제작
+python inference.py -m model.pt -s original_song.wav -r singer_voice.wav -o cover_song.wav
+
+# 3. 언어 더빙 (다국어 지원)
+python inference.py -m model.pt -s english_speech.wav -r korean_voice.wav -o korean_dubbed.wav
 """

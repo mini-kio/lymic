@@ -5,12 +5,13 @@ import math
 
 class RectifiedFlow(nn.Module):
     """
-     Rectified Flow for Efficient Waveform Generation
+     Rectified Flow for Efficient MEL Spectrogram Generation
     - 직선적 경로로 더 효율적인 학습
     - 적은 단계로도 고품질 생성
     - FP16 최적화 적용
+    - MEL 생성으로 변경 (Raw waveform 대신)
     """
-    def __init__(self, dim=16384, condition_dim=768, steps=20, hidden_dim=512):
+    def __init__(self, dim=128, condition_dim=768, steps=20, hidden_dim=256):
         super().__init__()
         self.dim = dim
         self.condition_dim = condition_dim
@@ -42,20 +43,20 @@ class RectifiedFlow(nn.Module):
         더 직선적인 경로로 학습 효율성 향상
         
         Args:
-            x1: (B, dim) 타겟 파형
+            x1: (B, T, dim) 타겟 MEL spectrogram
             condition: (B, condition_dim) 조건
         """
-        B = x1.size(0)
+        B, T, dim = x1.shape
         device = x1.device
         
         # 시간 샘플링 (균등 분포)
         t = torch.rand(B, device=device, dtype=x1.dtype)
         
-        # 노이즈 샘플링 (가우시안)
+        # 노이즈 샘플링 (가우시안) - MEL spectrogram 차원에 맞춤
         x0 = torch.randn_like(x1)
         
         #  Rectified Flow: 직선적 보간
-        t_expanded = t.view(B, 1)
+        t_expanded = t.view(B, 1, 1)  # (B, 1, 1) for broadcasting to (B, T, dim)
         x_t = (1 - t_expanded) * x0 + t_expanded * x1
         
         #  타겟 속도 (직선 경로)
@@ -70,7 +71,7 @@ class RectifiedFlow(nn.Module):
         return loss
     
     @torch.amp.autocast('cuda')
-    def sample(self, condition, num_steps=None, x0=None, method='fast_rectified'):
+    def sample(self, condition, target_length, num_steps=None, x0=None, method='fast_rectified'):
         """
          최적화된 샘플링 - 여러 빠른 방법 지원
         """
@@ -81,7 +82,8 @@ class RectifiedFlow(nn.Module):
         device = condition.device
         
         if x0 is None:
-            x0 = torch.randn(B, self.dim, device=device, dtype=condition.dtype)
+            # MEL spectrogram 차원에 맞는 노이즈 생성: (B, T, mel_bins)
+            x0 = torch.randn(B, target_length, self.dim, device=device, dtype=condition.dtype)
         
         # 방법에 따른 분기
         if method == 'fast_rectified':
@@ -215,12 +217,13 @@ class RectifiedFlow(nn.Module):
 
 class RectifiedVectorField(nn.Module):
     """
-     최적화된 벡터 필드 네트워크
+     최적화된 벡터 필드 네트워크 (MEL Spectrogram 용)
     - FP16 최적화
     - 메모리 효율적 설계
     - 컴파일 최적화 적용
+    - MEL 차원 처리
     """
-    def __init__(self, dim=16384, condition_dim=768, hidden_dim=512):
+    def __init__(self, dim=128, condition_dim=768, hidden_dim=256):
         super().__init__()
         
         self.dim = dim
@@ -229,8 +232,8 @@ class RectifiedVectorField(nn.Module):
         #  시간 임베딩 (최적화)
         self.time_embedding = OptimizedTimeEmbedding(hidden_dim)
         
-        #  효율적인 파형 프로젝션
-        self.waveform_proj = nn.Sequential(
+        #  효율적인 MEL 프로젝션
+        self.mel_proj = nn.Sequential(
             nn.Linear(dim, hidden_dim),
             nn.SiLU(),
             nn.Dropout(0.05),  # 낮은 드롭아웃
@@ -249,7 +252,7 @@ class RectifiedVectorField(nn.Module):
             nn.Dropout(0.05),
             nn.Linear(hidden_dim, hidden_dim),
             nn.SiLU(),
-            nn.Linear(hidden_dim, dim)  # 출력: 파형 속도
+            nn.Linear(hidden_dim, dim)  # 출력: MEL 속도
         )
         
         #  가중치 초기화 최적화
@@ -269,20 +272,34 @@ class RectifiedVectorField(nn.Module):
         """
         최적화된 순전파
         Args:
-            x: (B, dim) 입력 파형
+            x: (B, T, dim) 입력 MEL spectrogram
             t: (B,) 시간
             condition: (B, condition_dim) 조건
         """
+        B, T, dim = x.shape
+        
+        # Flatten for processing: (B, T, dim) -> (B*T, dim)
+        x_flat = x.reshape(B * T, dim)
+        
         # 임베딩들
-        x_emb = self.waveform_proj(x)  # (B, hidden_dim//4)
+        x_emb = self.mel_proj(x_flat)  # (B*T, hidden_dim//4)
+        
+        # Time embedding - expand for all time steps
         t_emb = self.time_embedding(t)  # (B, hidden_dim//2)
+        t_emb = t_emb.unsqueeze(1).expand(B, T, -1).reshape(B * T, -1)  # (B*T, hidden_dim//2)
+        
+        # Condition embedding - expand for all time steps  
         c_emb = self.condition_proj(condition)  # (B, hidden_dim//4)
+        c_emb = c_emb.unsqueeze(1).expand(B, T, -1).reshape(B * T, -1)  # (B*T, hidden_dim//4)
         
         # 연결 - 차원 맞춤
-        h = torch.cat([x_emb, t_emb, c_emb], dim=-1)  # (B, hidden_dim)
+        h = torch.cat([x_emb, t_emb, c_emb], dim=-1)  # (B*T, hidden_dim)
         
         # 속도 예측
-        velocity = self.net(h)
+        velocity_flat = self.net(h)  # (B*T, dim)
+        
+        # Reshape back: (B*T, dim) -> (B, T, dim)
+        velocity = velocity_flat.reshape(B, T, dim)
         
         return velocity
 
